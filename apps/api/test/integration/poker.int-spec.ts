@@ -525,6 +525,35 @@ describe('poker (integration)', () => {
       }
     });
 
+    it('is watched by the reconciliation sweep, not only by this test', async () => {
+      // P9 left this invariant asserted here and nowhere else, which proves the code was
+      // right about the hands this file plays — not that it is still right about the money
+      // on real tables at three in the morning. The sweep is what makes it a control.
+      const tableId = await makeTable();
+      const alice = await makePlayer();
+      await poker.sit({ userId: alice, tableId, buyIn: BUY_IN });
+
+      expect((await reconciliation.run()).findings).toEqual([]);
+
+      // Chips that no money backs. Written straight to the seat, because no code path
+      // should be able to produce this — which is the point of checking for it anyway.
+      await pool.query(`UPDATE poker.seats SET stack = stack + 5000 WHERE table_id = $1`, [
+        tableId,
+      ]);
+
+      const drifted = (await reconciliation.run()).findings.filter(
+        (finding) => finding.check === 'table_escrow' && finding.subject === tableId,
+      );
+      expect(drifted).toHaveLength(1);
+      expect(drifted[0]!.detail).toContain('the table says');
+
+      // Put it back, so the sweep in the next test has a clean ledger to look at.
+      await pool.query(`UPDATE poker.seats SET stack = stack - 5000 WHERE table_id = $1`, [
+        tableId,
+      ]);
+      expect((await reconciliation.run()).findings).toEqual([]);
+    });
+
     it('leaves the ledger reconciled', async () => {
       const report = await reconciliation.run();
       expect(report.findings).toEqual([]);

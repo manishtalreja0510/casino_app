@@ -152,6 +152,7 @@ Rules encoded in the ordering:
 **Testing:** rule-engine unit tests; synthetic collusion/chip-dump scenarios detected; self-exclusion blocks matchmaking + faucet immediately.
 **Acceptance:** risk actions demonstrably applied end-to-end (flagged session degraded, frozen user blocked from money ops with support path).
 **Enables:** P12 queues, P14, P18.
+**Status: COMPLETE (2026-08-23)** — `docs/phases/PHASE-10-risk-responsible-gaming.md`. ADR-026 places both domains' enforcement inside the wallet's debit paths, so a game cannot skip a check it never knew about. Carried forward to P12 rather than built here: proactive queue eviction on exclusion, evidence export, rule editing, and mid-session forced unseat on a session-time limit (entry is blocked instead). The age-verification placeholder was not built — KYC is parked by owner decision and a self-attested date of birth is not verification; it would have been a control in name only.
 
 ## P11 — Notifications
 **Objective:** player messaging. **Scope:** notification domain (templates, per-user prefs, in-app inbox); transport abstraction: in-app WS (P5) as guaranteed baseline, FCM adapter where Play services exists (OQ-09), email provider port; critical-vs-marketing classes (critical never push-only); RG/security notices wiring (limit reached, new-device login).

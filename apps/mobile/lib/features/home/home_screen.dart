@@ -118,6 +118,17 @@ class HomeScreen extends ConsumerWidget {
                       icon: Icons.sports_esports,
                       onPressed: () => context.push(AppRoutes.lobby),
                     ),
+                    SizedBox(height: t.space.md),
+                    // Reachable from the home screen rather than buried in a settings
+                    // menu: a control somebody has to hunt for when they are losing is a
+                    // control they will not use.
+                    AppButton(
+                      label: 'Playing safely',
+                      variant: AppButtonVariant.secondary,
+                      expand: true,
+                      icon: Icons.shield_outlined,
+                      onPressed: () => context.push(AppRoutes.responsibleGaming),
+                    ),
                     const Spacer(),
                     if (!config.flavor.isProduction)
                       AppButton(

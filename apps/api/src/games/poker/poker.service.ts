@@ -18,6 +18,9 @@ import { MatchmakingRepository } from '../../matchmaking/matchmaking.repository'
 import { RealtimeService } from '../../realtime/realtime.service';
 import { TimerService } from '../../realtime/timer.service';
 import { WalletService } from '../../wallet/wallet.service';
+import { ReconciliationService } from '../../wallet/reconciliation.service';
+import { RiskService } from '../../risk/risk.service';
+import { RgService } from '../../responsible-gaming/rg.service';
 import { RoundLeaderService } from '../crash/round-leader.service';
 import { PokerRepository, type PokerSeat, type PokerTable } from './poker.repository';
 import { parsePokerConfig } from './poker.config';
@@ -79,9 +82,33 @@ export class PokerService implements OnApplicationBootstrap, OnApplicationShutdo
     private readonly flags: FlagsService,
     private readonly leader: RoundLeaderService,
     private readonly config: ConfigService,
+    /**
+     * The risk engine, told how chips moved (`fraud-risk.md §3`).
+     *
+     * Pushed rather than read: risk never touches `poker.*` (rule 20), and poker never
+     * learns what the heuristics make of it. The hand settles either way.
+     */
+    private readonly risk: RiskService,
+    private readonly rg: RgService,
+    private readonly reconciliation: ReconciliationService,
   ) {}
 
   onApplicationBootstrap(): void {
+    // What every table escrow should hold, declared to the wallet's reconciliation sweep
+    // (ADR-025). Registered on every instance, not only the one that deals: the sweep may
+    // run anywhere, and the answer is read from the database rather than from memory.
+    //
+    // The sum of the seated stacks is the whole figure even mid-hand — chips committed to
+    // a pot are still accounted to the seat they came from until the hand writes stacks
+    // back, in the same transaction that settles the money.
+    this.reconciliation.registerEscrowSource(async () =>
+      (await this.tables.stacksByTable()).map((row) => ({
+        tableId: row.tableId,
+        expected: row.total,
+        detail: 'sum of seated stacks',
+      })),
+    );
+
     this.engine.onMatchChanged((change) => this.onMatchChanged(change));
 
     if (!this.config.get<boolean>('SCHEDULED_WORK_ENABLED', true)) {
@@ -163,6 +190,7 @@ export class PokerService implements OnApplicationBootstrap, OnApplicationShutdo
     seatNo?: number;
   }): Promise<{ seatNo: number; stack: number }> {
     await this.requireEnabled();
+    await this.rg.requirePlayEntry(input.userId);
 
     const elsewhere = await this.tables.seatsOf(input.userId);
     if (elsewhere.filter((seat) => seat.tableId !== input.tableId).length >= MAX_TABLES_PER_USER) {
@@ -451,6 +479,19 @@ export class PokerService implements OnApplicationBootstrap, OnApplicationShutdo
           }
         }
       });
+
+      if (change.status === 'settled' && result) {
+        // Net chips per player for this hand: what they ended with, minus what they had
+        // when it was dealt. The stacks at deal time are on the roster, which is why this
+        // is computed here rather than inside the reducer.
+        const players = await this.matches.listPlayers(change.matchId);
+        const net: Record<string, number> = {};
+        for (const player of players) {
+          const before = Number((player.meta as { stack?: number })?.stack ?? 0);
+          net[player.userId] = (result.stacks[player.userId] ?? before) - before;
+        }
+        await this.risk.observePokerHand({ matchId: change.matchId, tableId, net });
+      }
 
       await this.realtime.broadcast(tableRoom(tableId), 'poker:hand_finished', {
         tableId,

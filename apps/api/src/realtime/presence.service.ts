@@ -40,6 +40,36 @@ export class PresenceService {
     return entries ? [...new Set(Object.values(entries))] : [];
   }
 
+  /**
+   * Every user with at least one live connection.
+   *
+   * Scans the per-user presence keys rather than keeping a set, because a set would need
+   * removing on disconnect and a hard-killed instance never gets to do that — the TTL on
+   * each key is what keeps this honest. Bounded by the number of connected players, and
+   * read by the responsible-gaming sweeps rather than by anything on a request path.
+   */
+  async connectedUsers(): Promise<string[]> {
+    const prefix = PresenceService.key('user:');
+    const users = new Set<string>();
+
+    const scanned = await this.tolerate('scan', async () => {
+      const found: string[] = [];
+      let cursor = '0';
+      do {
+        const [next, keys] = await this.redis.scan(cursor, 'MATCH', `${prefix}*`, 'COUNT', 200);
+        cursor = next;
+        found.push(...keys);
+      } while (cursor !== '0');
+      return found;
+    });
+
+    for (const key of scanned ?? []) {
+      const entries = await this.tolerate('members', () => this.redis.hgetall(key));
+      for (const userId of Object.values(entries ?? {})) users.add(userId);
+    }
+    return [...users];
+  }
+
   /** Refreshes the TTL for a live connection; called on heartbeat. */
   async touch(room: string): Promise<void> {
     await this.tolerate('touch', () =>

@@ -40,6 +40,17 @@ export const ErrorCode = {
   COMPLIANCE_REAL_MONEY_DISABLED: 'COMPLIANCE_REAL_MONEY_DISABLED',
   RG_SELF_EXCLUDED: 'RG_SELF_EXCLUDED',
   RG_LIMIT_REACHED: 'RG_LIMIT_REACHED',
+  /** A reality check is outstanding; new play resumes once it is acknowledged (P10). */
+  RG_CHECK_PENDING: 'RG_CHECK_PENDING',
+
+  // risk (docs/02-domains/fraud-risk.md)
+  /**
+   * The account is frozen by the risk engine. The message always names the support path:
+   * a freeze without one is a silent freeze, and there are none of those (`fraud-risk.md §9`).
+   */
+  RISK_ACCOUNT_FROZEN: 'RISK_ACCOUNT_FROZEN',
+  /** A graduated restriction short of a freeze — a stake cap, a denied faucet claim. */
+  RISK_RESTRICTED: 'RISK_RESTRICTED',
 } as const;
 
 export type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode];

@@ -73,3 +73,4 @@ Relative paths to related docs, ADR-nnn, OQ-nn, phases P-nn.
 | [ADR-023](ADR-023-open-roster-round-based-matches.md) | Open-roster, round-based matches (+ replayable clock, `pendingTimer`, `publicView`) | ACCEPTED |
 | [ADR-024](ADR-024-house-banked-settlement.md) | House-banked settlement | ACCEPTED |
 | [ADR-025](ADR-025-table-scoped-escrow.md) | Table-scoped escrow & table-banked settlement (poker) | ACCEPTED |
+| [ADR-026](ADR-026-enforcement-at-the-money-boundary.md) | Enforcement at the money boundary (RG + risk inside the wallet's debit paths) | ACCEPTED |

@@ -224,6 +224,22 @@ export class PokerRepository {
   }
 
   /** Sum of seated stacks — one half of the table-escrow invariant (ADR-025). */
+  /**
+   * Every table's total seated stack, in one query, for the reconciliation sweep.
+   *
+   * Includes tables with no seats at all — a table whose players have all stood up must
+   * hold nothing, and that is exactly the case where a leak would otherwise go unnoticed.
+   */
+  async stacksByTable(): Promise<Array<{ tableId: string; total: number }>> {
+    const { rows } = await this.pool.query<{ table_id: string; total: string }>(
+      `SELECT t.id AS table_id, COALESCE(SUM(s.stack), 0)::text AS total
+         FROM poker.tables t
+         LEFT JOIN poker.seats s ON s.table_id = t.id
+        GROUP BY t.id`,
+    );
+    return rows.map((row) => ({ tableId: row.table_id, total: Number(row.total) }));
+  }
+
   async totalSeatedStacks(tableId: string): Promise<number> {
     const { rows } = await this.pool.query<{ total: string }>(
       `SELECT COALESCE(SUM(stack), 0)::text AS total FROM poker.seats WHERE table_id = $1`,

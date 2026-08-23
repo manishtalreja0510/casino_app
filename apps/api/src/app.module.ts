@@ -9,6 +9,8 @@ import { GameEngineModule } from './game-engine/game-engine.module';
 import { MatchmakingModule } from './matchmaking/matchmaking.module';
 import { CrashModule } from './games/crash/crash.module';
 import { PokerModule } from './games/poker/poker.module';
+import { RgModule } from './responsible-gaming/rg.module';
+import { RiskModule } from './risk/risk.module';
 import { TraceIdMiddleware } from './platform/logging/trace-id.middleware';
 import { MaintenanceMiddleware } from './platform/maintenance/maintenance.middleware';
 
@@ -29,6 +31,8 @@ import { MaintenanceMiddleware } from './platform/maintenance/maintenance.middle
     MatchmakingModule,
     CrashModule,
     PokerModule,
+    RgModule,
+    RiskModule,
   ],
 })
 export class AppModule implements NestModule {

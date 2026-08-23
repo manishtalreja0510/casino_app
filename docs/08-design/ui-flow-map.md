@@ -79,13 +79,14 @@ Companions: `design-system.md` (tokens/components), `asset-animation-pipeline.md
 | **Forced update (hard)** | Guard-level redirect to forced-update block from any screen on min-version failure or 426 response. Non-negotiable path (rule 17 ⛔). |
 | **Kill-switch / maintenance** | Global → maintenance screen. Per-game → game unavailable states in lobby + in-game drain notice (finish/void per game policy, server-decided). Per-feature (e.g. faucet) → feature-level disabled states. Real-money master gate keeps P16/P17 surfaces hidden entirely. |
 | **Session expiry / revocation** | Guard redirect to login with reason toast; in-game handled via reconnect-then-fail path. |
-| **Self-exclusion / suspension** | Account-state guard blocks matchmaking/wallet surfaces with explanatory block screen + support path. |
+| **Self-exclusion / suspension** | **BUILT (P10)** for exclusion: the server refuses every money and play path and the app shows the refusal in the server's words; the RG screen shows the break, its end date, and that it cannot be shortened. A self-excluded player can still sign in — an exclusion they cannot look at is one they cannot ask about. Suspension still ends the session at the guard, as in P3. |
 
 ## Change log
 
 | Date | PR | Change |
 |---|---|---|
 | 2026-08-23 | — | Seeded full planned catalog; all screens NOT_BUILT. |
+| 2026-08-23 | P10 | Responsible gaming built at `/playing-safely`, linked from Home. The reality check is a modal above the router rather than a screen — a check that only appears on some screens is one a player can stay away from. The screen decides nothing: no limit arithmetic, no local idea of whether play is allowed, and a break sent only after the confirmation words are typed (the server asks for them again anyway). |
 | 2026-08-23 | P9 | Poker built: table list at `/play/poker` and a table at `/play/poker/:tableId`. The lobby routes round-mode games by game code, because only the client knows which screens it has. `playerLabel` added to `ui_kit` — a short, non-identifying opponent label that does not throw on a short id (rule 15, and a real crash). |
 | 2026-08-23 | P8 | Crash table built at `/play/crash/:tierId`; lobby routes round-mode games to it instead of a queue, and now updates live from `lobby:{gameCode}`. Two `ui_kit` components added (`AppMultiplierDisplay`, `AppOutcomeStrip`). Build-status table below corrected — it had not been updated since P2 and understated what exists. |
 
@@ -109,6 +110,7 @@ no map, because it is trusted.
 | Poker table list | `/play/poker` | **BUILT** (P9) | A tier has many tables, so there is a choice to make before there is a game to join. |
 | Poker table | `/play/poker/:tableId` | **BUILT** (P9) | Seats, board, your own cards, the legal actions. Placeholder look. |
 | Wallet | `/wallet` | **BUILT** (P4) | Balance, history, interim direct-credit funding (ADR-022). |
+| Playing safely | `/playing-safely` | **BUILT** (P10) | Limits with usage, breaks with typed confirmation, reality-check interval, RG history. Reached from the home screen rather than a settings menu: a control somebody has to hunt for when they are losing is a control they will not use. |
 | Component gallery | `/_dev/gallery` | **BUILT** (P2) | Designer reference — every `ui_kit` component in every state. Hidden in production builds. |
 | Matchmaking wait | — | NOT_BUILT | P7 forms matches instantly at this scale; the waiting state is P9's, when poker tables make it real. |
 | Match result / settlement | — | NOT_BUILT | Both games settle inline on their own table. A standalone summary screen is still unbuilt and is now a P19 question rather than a P9 one — nothing needs it. |

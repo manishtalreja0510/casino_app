@@ -8,9 +8,10 @@ import { AuthModule } from '../auth/auth.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { GameEngineModule } from '../game-engine/game-engine.module';
+import { RgModule } from '../responsible-gaming/rg.module';
 
 @Module({
-  imports: [AuthModule, WalletModule, RealtimeModule, GameEngineModule],
+  imports: [AuthModule, WalletModule, RealtimeModule, GameEngineModule, RgModule],
   controllers: [LobbyController],
   providers: [MatchmakingService, MatchmakingRepository, QueueService, FormationSweeper],
   exports: [MatchmakingService, MatchmakingRepository, QueueService],

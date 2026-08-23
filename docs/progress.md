@@ -19,9 +19,9 @@ Update this file in the same PR as any status change. BLOCKED entries must name 
 | P7 | Matchmaking & lobby | COMPLETE | 2026-08-23 · `phases/PHASE-07-matchmaking-lobby.md` |
 | P8 | Casino game #1 — Crash (test currency) | COMPLETE | 2026-08-23 · `phases/PHASE-08-casino-game-crash.md` · OQ-05 decided: Crash · ADR-023, ADR-024 |
 | P9 | Poker — NLHE cash (test currency) | COMPLETE | 2026-08-23 · `phases/PHASE-09-poker.md` · OQ-07 decided: NLHE cash · ADR-025 · blocker cleared first (ADR-023 §4b) |
-| P10 | Risk & responsible gaming v1 | NOT_STARTED | P8 and P9 complete; poker exports the collusion surface (`poker.md §14`) |
+| P10 | Risk & responsible gaming v1 | COMPLETE | 2026-08-23 · `phases/PHASE-10-risk-responsible-gaming.md` · ADR-026 (enforcement at the money boundary) · P9 debt closed: the table-escrow invariant is now checked by the reconciliation sweep, not only by tests |
 | P11 | Notifications | NOT_STARTED | needs P5; transport = OQ-09 |
-| P12 | Admin panel v1 | NOT_STARTED | needs P4 (risk queues need P10) |
+| P12 | Admin panel v1 | NOT_STARTED | needs P4; P10 now supplies the risk cases and RG state it reads, plus the deferrals P10 named for it (proactive queue eviction, evidence export, rule editing) |
 | P13 | Distribution & updates (narrowed) | NOT_STARTED | server-side min-version enforcement only; channel owned by separate team |
 | P14 | Hardening & load | NOT_STARTED | needs P8–P13; gates P18 |
 | P15 | Compliance hand-off checkpoint | BLOCKED | external licensing team owns it; not an engineering gate |

@@ -14,4 +14,5 @@ export 'src/lobby_models.dart';
 export 'src/money.dart';
 export 'src/poker_models.dart';
 export 'src/realtime_client.dart';
+export 'src/rg_models.dart';
 export 'src/wallet_models.dart';

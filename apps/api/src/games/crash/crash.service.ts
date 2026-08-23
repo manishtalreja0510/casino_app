@@ -15,6 +15,7 @@ import { MatchmakingRepository, type StakeTier } from '../../matchmaking/matchma
 import { RealtimeService } from '../../realtime/realtime.service';
 import { TimerService } from '../../realtime/timer.service';
 import { WalletService } from '../../wallet/wallet.service';
+import { RgService } from '../../responsible-gaming/rg.service';
 import { RoundLeaderService } from './round-leader.service';
 import { parseCrashConfig, type CrashConfig } from './crash.config';
 import { BASE_X100, GROWTH_PER_MILLE, TICK_MS, commitmentFor } from './crash.math';
@@ -73,6 +74,7 @@ export class CrashService implements OnApplicationBootstrap, OnApplicationShutdo
     private readonly flags: FlagsService,
     private readonly leader: RoundLeaderService,
     private readonly config: ConfigService,
+    private readonly rg: RgService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -269,6 +271,11 @@ export class CrashService implements OnApplicationBootstrap, OnApplicationShutdo
     amount: number;
     autoCashOutX100?: number;
   }): Promise<{ matchId: string; amount: number; autoCashOutX100: number | null; balance: number }> {
+    // Entering a round is entering play. The stake itself is checked again by the wallet
+    // (ADR-026) — this is the earlier, cheaper refusal that keeps a excluded player from
+    // getting as far as a failed bet.
+    await this.rg.requirePlayEntry(input.userId);
+
     const tier = await this.requireTier(input.tierId);
     const { config } = parseCrashConfig(tier.config);
 

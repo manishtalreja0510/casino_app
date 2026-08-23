@@ -57,6 +57,23 @@ export class LedgerService {
     private readonly audit: AuditService,
   ) {}
 
+  /**
+   * The id an operation was already posted under, or null if it never was.
+   *
+   * Separate from `post` because a caller sometimes needs to know it is *about* to replay
+   * before doing the work around the post — a responsible-gaming check, say, which a
+   * replay must not consume, because a replay charges nothing (see `WalletService`).
+   * Reading it is not a substitute for the unique index: two callers can still both read
+   * "not posted" and race, and `post` resolves that.
+   */
+  async findPosted(client: PoolClient, idempotencyKey: string): Promise<string | null> {
+    const { rows } = await client.query<{ id: string }>(
+      'SELECT id FROM wallet.ledger_transactions WHERE idempotency_key = $1',
+      [idempotencyKey],
+    );
+    return rows[0]?.id ?? null;
+  }
+
   async post(input: PostInput, existingClient?: PoolClient): Promise<PostResult> {
     if (existingClient) return this.postWith(existingClient, input);
 

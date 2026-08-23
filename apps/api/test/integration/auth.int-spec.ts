@@ -181,15 +181,29 @@ describe('auth (integration)', () => {
     expect(response.body.error.code).toBe('AUTH_ACCOUNT_SUSPENDED');
   });
 
-  it('reports self-exclusion distinctly from suspension (rule 12)', async () => {
+  it('lets a self-excluded player in, unlike a suspended one', async () => {
+    // Changed deliberately in P10 (`responsible-gaming.md §5`, ADR-026). P3 refused the
+    // request, which was the wrong end of the trade: an exclusion a player cannot look at
+    // is one they cannot see the end date of, cannot ask about, and will open a support
+    // ticket over. Nothing is unlocked by letting them read their own account — every
+    // money and play path asks responsible gaming first and refuses, which is asserted
+    // against the real wallet, matchmaking and poker paths in `rg.int-spec.ts`.
     const registered = await register(uniqueEmail('rg'));
     await pool.query("UPDATE auth.users SET status = 'self_excluded' WHERE id = $1", [registered.user.id]);
 
     const response = await api()
       .get(`${API_PREFIX}/auth/me`)
       .set('authorization', `Bearer ${registered.accessToken}`)
-      .expect(403);
-    expect(response.body.error.code).toBe('RG_SELF_EXCLUDED');
+      .expect(200);
+    // And they are shown the state they are in, rather than a generic account page.
+    expect(response.body.status).toBe('self_excluded');
+
+    // Renewing the session works too: an exclusion is not a logout, and a player who is
+    // signed out mid-break has to sign back in to see when it ends.
+    await api()
+      .post(`${API_PREFIX}/auth/refresh`)
+      .send({ refreshToken: registered.refreshToken })
+      .expect(201);
   });
 
   it('lists and revokes sessions', async () => {

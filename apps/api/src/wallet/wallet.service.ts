@@ -4,7 +4,10 @@ import { PG_POOL } from '../platform/database/database.module';
 import { withTransaction } from '../platform/database/transaction';
 import { FlagsService } from '../platform/flags/flags.service';
 import { FlagKey } from '../platform/flags/flag-keys';
-import { LedgerService } from './ledger.service';
+import { RgService } from '../responsible-gaming/rg.service';
+import type { SpendKind } from '../responsible-gaming/rg.types';
+import { RiskService } from '../risk/risk.service';
+import { LedgerService, type PostInput, type PostResult } from './ledger.service';
 import { WalletRepository, type TransactionSummary } from './wallet.repository';
 import {
   CurrencyMismatchError,
@@ -43,6 +46,21 @@ export class WalletService {
     private readonly ledger: LedgerService,
     private readonly repository: WalletRepository,
     private readonly flags: FlagsService,
+    /**
+     * Responsible gaming, consulted on every path that moves a player's money (ADR-026).
+     *
+     * Here rather than at each caller on purpose. A game, a lobby shortcut or an admin
+     * convenience that forgot to ask would be a rule-12 violation nobody would notice
+     * until it mattered; from here, a game cannot forget because it never knew.
+     */
+    private readonly rg: RgService,
+    /**
+     * The risk engine, consulted on the same paths and for the same reason.
+     *
+     * A frozen account must not be able to move money, and "must not" only means anything
+     * if it is checked where the money moves rather than where somebody remembered.
+     */
+    private readonly risk: RiskService,
   ) {}
 
   async getBalance(userId: string, currency = TEST_CURRENCY): Promise<{ amount: number; currency: string }> {
@@ -108,11 +126,20 @@ export class WalletService {
       throw new FundingLimitExceededError(24);
     }
 
+    // A frozen account funds nothing. Checked before the transaction opens: this is a
+    // refusal, not a race, and there is nothing to keep consistent with it.
+    await this.risk.requireAllowed(input.userId);
+
     const result = await withTransaction(this.pool, async (client) => {
       const userAccount = await this.repository.ensureUserAccount(client, input.userId, currency);
       const houseAccount = await this.repository.ensureHouseAccount(client, 'house_dev_funding', currency);
 
-      return this.ledger.post(
+      // On test currency the faucet stands in for a deposit (ADR-022), so it is a deposit
+      // limit that binds it — the same limit that will bind a real deposit at P17, having
+      // been exercised for months first.
+      return this.postSpend(
+        client,
+        { userId: input.userId, kind: 'deposit', amount: input.amount },
         {
           type: 'funding',
           idempotencyKey: input.idempotencyKey,
@@ -122,9 +149,19 @@ export class WalletService {
           ],
           audit: { actorType: 'user', actorId: input.userId, action: 'wallet.funding' },
         },
-        client,
       );
     });
+
+    // Velocity is a fact the wallet observed, so the wallet reports it. What it is worth
+    // is the risk engine's to decide (`fraud-risk.md §3`).
+    if (!result.replayed && recent + input.amount > FUNDING_LIMITS.maxPer24Hours / 2) {
+      await this.risk.ingest({
+        source: 'wallet',
+        type: 'velocity.faucet_burst',
+        userId: input.userId,
+        payload: { last24h: recent + input.amount },
+      });
+    }
 
     const balance = await this.getBalance(input.userId, currency);
     return { ...result, balance: balance.amount };
@@ -155,11 +192,16 @@ export class WalletService {
     const currency = input.currency ?? TEST_CURRENCY;
     if (!Number.isSafeInteger(input.amount) || input.amount <= 0) throw new CurrencyMismatchError();
 
+    await this.risk.requireAllowed(input.userId);
+
     const work = async (client: PoolClient) => {
       const userAccount = await this.repository.ensureUserAccount(client, input.userId, currency);
       const escrow = await this.repository.ensureEscrowAccount(client, input.matchId, currency);
 
-      return this.ledger.post(
+      // Money leaving the wallet to play is a wager, whatever game asked for it.
+      return this.postSpend(
+        client,
+        { userId: input.userId, kind: 'wager', amount: input.amount },
         {
           type: 'buy_in',
           // Idempotent per player per match: a retried join cannot charge twice.
@@ -172,7 +214,6 @@ export class WalletService {
           ],
           audit: { actorType: 'user', actorId: input.userId, action: 'wallet.buy_in' },
         },
-        client,
       );
     };
 
@@ -269,6 +310,9 @@ export class WalletService {
         },
         client,
       );
+
+      await this.meterReturns(client, input.payouts, result.replayed);
+
       return { ...result, rake };
     });
   }
@@ -366,6 +410,8 @@ export class WalletService {
         client,
       );
 
+      await this.meterReturns(client, input.payouts, result.replayed);
+
       if (houseNet < 0) {
         // Not an error — it is what a house-banked game losing a round looks like. Logged
         // because the running house float is an operational number somebody has to watch,
@@ -407,26 +453,29 @@ export class WalletService {
     const currency = input.currency ?? TEST_CURRENCY;
     if (!Number.isSafeInteger(input.amount) || input.amount <= 0) throw new CurrencyMismatchError();
 
-    const work = async (client: PoolClient) => {
-      {
-        const userAccount = await this.repository.ensureUserAccount(client, input.userId, currency);
-        const escrow = await this.repository.ensureTableAccount(client, input.tableId, currency);
+    await this.risk.requireAllowed(input.userId);
 
-        return this.ledger.post(
-          {
-            type: 'buy_in',
-            idempotencyKey: `table_buy_in:${input.seatSessionId}`,
-            refType: 'table',
-            refId: input.tableId,
-            entries: [
-              { accountId: userAccount.id, amount: -input.amount, currency },
-              { accountId: escrow.id, amount: input.amount, currency },
-            ],
-            audit: { actorType: 'user', actorId: input.userId, action: 'wallet.table_buy_in' },
-          },
-          client,
-        );
-      }
+    const work = async (client: PoolClient) => {
+      const userAccount = await this.repository.ensureUserAccount(client, input.userId, currency);
+      const escrow = await this.repository.ensureTableAccount(client, input.tableId, currency);
+
+      // Buying chips at a table is a wager the moment the money leaves the wallet, even
+      // though it may sit on the felt for an hour before any of it is bet.
+      return this.postSpend(
+        client,
+        { userId: input.userId, kind: 'wager', amount: input.amount },
+        {
+          type: 'buy_in',
+          idempotencyKey: `table_buy_in:${input.seatSessionId}`,
+          refType: 'table',
+          refId: input.tableId,
+          entries: [
+            { accountId: userAccount.id, amount: -input.amount, currency },
+            { accountId: escrow.id, amount: input.amount, currency },
+          ],
+          audit: { actorType: 'user', actorId: input.userId, action: 'wallet.table_buy_in' },
+        },
+      );
     };
 
     try {
@@ -467,7 +516,7 @@ export class WalletService {
       const userAccount = await this.repository.ensureUserAccount(client, input.userId, currency);
       const escrow = await this.repository.ensureTableAccount(client, input.tableId, currency);
 
-      return this.ledger.post(
+      const posted = await this.ledger.post(
         {
           type: 'settlement',
           idempotencyKey: `table_cash_out:${input.seatSessionId}`,
@@ -481,6 +530,9 @@ export class WalletService {
         },
         client,
       );
+
+      await this.meterReturns(client, [{ userId: input.userId, amount: input.amount }], posted.replayed);
+      return posted;
     };
 
     return existingClient ? work(existingClient) : withTransaction(this.pool, work);
@@ -527,6 +579,69 @@ export class WalletService {
         client,
       );
     });
+  }
+
+  /**
+   * Posts a spend of a player's money: replay first, then allowance, then meter.
+   *
+   * Every path that takes money out of a wallet goes through here, and the order of the
+   * three steps is the whole point.
+   *
+   * **Replay first.** A replayed operation posts nothing, so it must consume nothing
+   * either. Checking the limit before knowing whether this is a replay meant a retried
+   * buy-in — after a dropped response, a reconnect, a formation retried by the sweeper —
+   * was refused by a wager limit it had never actually spent. The player is punished for
+   * a flaky network, and the more unreliable their connection the smaller their limit
+   * effectively becomes. Reading the key here does not replace the unique index: two
+   * callers can still both read "not posted", and `post` resolves that race — which is
+   * why the meter below re-checks `replayed` rather than trusting this read.
+   *
+   * **Then the allowance**, inside the caller's transaction, so the usage it reads cannot
+   * be stale and the usage it writes cannot outlive a rollback.
+   *
+   * **Then the meter**, in that same transaction as the money. A spend that committed
+   * without being metered is a limit that has silently stopped working — the failure mode
+   * where the control looks present and does nothing.
+   *
+   * It lives in the wallet rather than in each caller because a game, a lobby shortcut or
+   * an admin convenience that forgot to ask would be nobody's fault and everybody's
+   * problem (ADR-026). From here a caller cannot forget, because it never knew.
+   */
+  private async postSpend(
+    client: PoolClient,
+    spend: { userId: string; kind: SpendKind; amount: number },
+    post: PostInput,
+  ): Promise<PostResult> {
+    const already = await this.ledger.findPosted(client, post.idempotencyKey);
+    if (already) return { transactionId: already, replayed: true };
+
+    await this.rg.requireAllowance(client, spend);
+
+    const posted = await this.ledger.post(post, client);
+    if (!posted.replayed) await this.rg.meterSpend(client, spend);
+    return posted;
+  }
+
+  /**
+   * Records money coming back to players, so a loss limit means net loss.
+   *
+   * A wager limit counts what went out; a loss limit counts what went out minus what came
+   * back. One subtraction rather than a second independent counter means the two cannot
+   * drift apart and disagree about the same hand.
+   *
+   * Skipped on a replay: a settlement that paid nothing the second time returned nothing.
+   */
+  private async meterReturns(
+    client: PoolClient,
+    payouts: readonly SettlementInstruction[],
+    replayed: boolean,
+  ): Promise<void> {
+    if (replayed) return;
+    for (const payout of payouts) {
+      if (payout.amount > 0) {
+        await this.rg.meterReturn(client, { userId: payout.userId, amount: payout.amount });
+      }
+    }
   }
 
   /**

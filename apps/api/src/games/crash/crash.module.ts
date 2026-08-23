@@ -4,6 +4,7 @@ import { GameRegistry } from '../../game-engine/game.registry';
 import { MatchmakingModule } from '../../matchmaking/matchmaking.module';
 import { RealtimeModule } from '../../realtime/realtime.module';
 import { WalletModule } from '../../wallet/wallet.module';
+import { RgModule } from '../../responsible-gaming/rg.module';
 import { CrashController } from './crash.controller';
 import { CrashService } from './crash.service';
 import { RoundLeaderService } from './round-leader.service';
@@ -16,7 +17,7 @@ import { crash } from './crash.game';
  * fact that this particular game exists.
  */
 @Module({
-  imports: [GameEngineModule, MatchmakingModule, RealtimeModule, WalletModule],
+  imports: [GameEngineModule, MatchmakingModule, RealtimeModule, WalletModule, RgModule],
   controllers: [CrashController],
   providers: [CrashService, RoundLeaderService],
   exports: [CrashService, RoundLeaderService],

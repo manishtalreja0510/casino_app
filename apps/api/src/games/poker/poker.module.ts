@@ -5,6 +5,8 @@ import { MatchmakingModule } from '../../matchmaking/matchmaking.module';
 import { RealtimeModule } from '../../realtime/realtime.module';
 import { WalletModule } from '../../wallet/wallet.module';
 import { CrashModule } from '../crash/crash.module';
+import { RiskModule } from '../../risk/risk.module';
+import { RgModule } from '../../responsible-gaming/rg.module';
 import { PokerController } from './poker.controller';
 import { PokerRepository } from './poker.repository';
 import { PokerService } from './poker.service';
@@ -19,7 +21,7 @@ import { poker } from './poker.game';
  * rather than a second one that drifts.
  */
 @Module({
-  imports: [GameEngineModule, MatchmakingModule, RealtimeModule, WalletModule, CrashModule],
+  imports: [GameEngineModule, MatchmakingModule, RealtimeModule, WalletModule, CrashModule, RiskModule, RgModule],
   controllers: [PokerController],
   providers: [PokerService, PokerRepository],
   exports: [PokerService, PokerRepository],

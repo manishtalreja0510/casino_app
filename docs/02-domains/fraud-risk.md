@@ -10,15 +10,25 @@ Detect and act on abuse — multi-accounting, collusion, chip dumping, client ta
 
 ## 2. Owned data (module-owned tables; other modules access via exported services only)
 
+Built in migration `0009_risk_rg` (P10). All tables live in the `risk` schema.
+
 | Table | Contents |
 |---|---|
-| `risk_signals` | append-only: id (UUIDv7), user_id?, session_id?, device_id?, match_id?, source, type, payload (jsonb, no PII beyond opaque ids), weight_at_ingest, ttl_expires_at, created_at |
-| `risk_scores` | current per-user and per-session score snapshots: subject_type, subject_id, score, contributing_signal_refs, computed_at, version of ruleset |
-| `risk_rules` | rule definitions: signal predicates, weight, ttl default, action thresholds; versioned; changes audit-logged |
-| `risk_actions` | applied actions: subject, action (flag/limit/require-review/freeze), reason ref, applied_by (system/admin id), lifted_by/at, expiry |
-| `risk_cases` | manual-review cases: state, priority, assignee, SLA due, linked signals/actions, resolution |
-| `risk_case_evidence` | evidence bundle refs (hand-history export refs, ledger tx refs, session/device lists, graph snapshots) |
-| `device_links` / `ip_links` | identity-graph edges: device_id↔user_id, ip↔user_id with first/last seen, occurrence counts (built incrementally from session data pushed by `auth`) |
+| `risk.signals` | append-only, **enforced by trigger**: id (UUIDv7), user_id?, session_id?, device_id?, match_id?, source, type, payload (jsonb, no PII beyond opaque ids), `weight_at_ingest`, `client_only`, expires_at, created_at. The weight is frozen at ingest so a later rule change cannot retroactively alter what an action was based on — a case must be defensible against the rules as they stood |
+| `risk.rules` | type, weight, ttl, `client_only`, enabled, description. Cached in memory and reloadable without a deploy; admin-editable in P12 |
+| `risk.actions` | applied actions: subject, action (flag/limit/require_review/freeze), reason, evidence (jsonb, frozen at the decision), applied_by, expires_at, lifted_by/at |
+| `risk.cases` | manual-review cases: state, priority, reason, evidence bundle, opened/resolved |
+| `risk.device_links` / `risk.ip_links` | identity-graph edges: device_id↔user_id, ip↔user_id with first/last seen and occurrence counts, built incrementally from session starts pushed by `auth` |
+
+**No `risk_scores` table.** A score is derived from the live signals every time it is asked
+for, rather than cached in a row that can silently disagree with the evidence under it. The
+snapshot that matters — the one an action was taken on — is frozen into `risk.actions.evidence`
+and the case, which is the only place a stale number would ever be defended. A hot cache in
+Redis is available if scoring ever costs enough to need one (rule 7: it would be a cache,
+never truth).
+
+**No separate `risk.case_evidence`.** Evidence rides on the case as jsonb at P10; it becomes
+a table when P12's review UI needs to attach and annotate items.
 
 Redis: hot score cache (short TTL), velocity counters (sliding windows), signal dedup keys. Postgres is truth (rule 7); losing Redis loses only counter warm-up.
 
@@ -41,7 +51,8 @@ Every signal: `{source, type, subject (user/session/device), weight, ttl, payloa
 ## 4. Scoring
 
 - **Rule-based v1.** Score = bounded weighted sum of live (non-expired) signals per subject; rules and weights in `risk_rules` (DB-backed config, hot-reloadable via `platform` config cache, changes audit-logged and admin-editable in P12 with role `risk`).
-- **Two scopes:** per-user (durable, drives account-level actions) and per-session (fast-moving, drives session degradation like WS disconnect or faucet denial without touching the account).
+- **Per-user at P10.** Per-session scoring is designed for and not built: `risk.signals` carries `session_id`, so a session-scoped scorer is additive. Nothing today degrades a single session while leaving the account alone.
+- **Two numbers, not one.** Every score carries `total` and `serverEvidence` — the part the server observed for itself. The ladder's first three rungs read `total`; `freeze` reads `serverEvidence` alone, which is how §6 stops being a policy someone has to remember (see §6).
 - **Deterministic and explainable:** every score snapshot stores contributing signal refs — required for case review and for defending actions to users/regulators.
 - **ML explicitly later:** the scorer sits behind an internal `RiskScorer` interface; a model-based scorer is a post-launch candidate once labeled outcomes (case resolutions) accumulate. Not before.
 
@@ -65,6 +76,14 @@ Client hardening signals (root, hooks, signature mismatch, Play Integrity) can b
 
 - Client-only signals may raise scores, trigger `flag`/`limit`, and weight review — they may **never** alone cause `freeze` or block login.
 - `freeze` requires server-observable evidence (ledger patterns, protocol violations, graph + gameplay corroboration) or admin decision.
+
+**How this is enforced, twice.** First by arithmetic: `evaluate` decides `freeze` on
+`serverEvidence`, which client-only signals never contribute to, so no quantity of them can
+reach it. Second by the numbers: every client-only weight in the seeded rule set adds up to
+100, and the freeze threshold is 120 — so even if the first check were deleted, a device
+reporting *every* problem at once still could not freeze itself. Both are asserted in
+`apps/api/test/integration/risk.int-spec.ts`, the second as a plain arithmetic test whose
+job is to fail loudly the day somebody raises a client weight past the margin.
 - Degradation examples: denied faucet, restricted stakes, forced re-auth, exclusion from high-stake matchmaking — silent where possible, so attackers get no oracle for which check fired.
 
 ## 7. Manual review queues
@@ -95,7 +114,7 @@ Client hardening signals (root, hooks, signature mismatch, Play Integrity) can b
 | Phase | Risk scope |
 |---|---|
 | P3/P5 | emitters exist (sessions, devices, WS anomalies) — schema-compatible events, no engine |
-| **P10** | engine v1: ingestion, rules/scores, action ladder, faucet velocity, identity graphs, poker collusion/chip-dump heuristics, hardening-signal weighing, case model, evidence export |
+| **P10** | **shipped**: ingestion with server-assigned weights, derived scores, the action ladder with the freeze/`serverEvidence` rule, faucet velocity, device/IP identity graph, poker chip-dump and co-seating heuristics (weighted higher when the pair is already linked), the client hardening report endpoint, and cases opened on every freeze with the evidence frozen into them. **Not shipped**: network signals (IP reputation, geo velocity, VPN/Tor — all need a data source that does not exist yet), per-session scoring, fold-pattern and soft-play heuristics, bonus abuse, and evidence *export* (evidence is stored and queryable; packaging it is P12's, with the review UI that reads it) |
 | P12 | review-queue UI, action buttons, rule editing (RBAC) |
 | P14 | load/abuse simulation: synthetic collusion + multi-account scenarios must be detected |
 | P17 | deposit/withdrawal velocity + payment-fraud signals live; withdrawal require-review gate active |

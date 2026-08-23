@@ -10,6 +10,7 @@ import 'health.dart';
 import 'lobby_models.dart';
 import 'money.dart';
 import 'poker_models.dart';
+import 'rg_models.dart';
 import 'wallet_models.dart';
 
 /// REST client for the casino_app API.
@@ -219,6 +220,60 @@ class CasinoApiClient {
       'idempotencyKey': idempotencyKey,
     });
     return Money.fromJson(json['balance'] as Map<String, dynamic>);
+  }
+
+  // ---- responsible gaming (P10) ----
+
+  Future<RgStatus> rgStatus() async => RgStatus.fromJson(await _get('/rg'));
+
+  /// Sets a limit. The server decides whether it binds now or after a cooling period —
+  /// stricter is immediate, looser waits — and says which in the response.
+  Future<({String effective, DateTime? effectiveAt})> setRgLimit({
+    required String type,
+    required String period,
+    required int amount,
+  }) async {
+    final json = await _post('/rg/limits', {
+      'type': type,
+      'period': period,
+      'amount': amount,
+    });
+    return (
+      effective: json['effective'] as String,
+      effectiveAt: json['effectiveAt'] == null
+          ? null
+          : DateTime.parse(json['effectiveAt'] as String),
+    );
+  }
+
+  Future<void> cancelPendingRgLimit({required String type, required String period}) async {
+    await _post('/rg/limits/cancel-pending', {'type': type, 'period': period});
+  }
+
+  /// Starts a cool-off or a self-exclusion.
+  ///
+  /// [confirm] is the server's own friction, not this screen's: a permanent break cannot
+  /// be started by a mis-tap, a replayed request, or a script that found the endpoint. The
+  /// UI asks for the same words so nothing arrives here the player did not mean.
+  Future<DateTime?> startRgExclusion({
+    required String kind,
+    required int? durationMs,
+    required String confirm,
+  }) async {
+    final json = await _post('/rg/exclusions', {
+      'kind': kind,
+      'durationMs': durationMs,
+      'confirm': confirm,
+    });
+    return json['endsAt'] == null ? null : DateTime.parse(json['endsAt'] as String);
+  }
+
+  Future<void> setRealityCheckInterval(int intervalMs) async {
+    await _post('/rg/reality-check/interval', {'intervalMs': intervalMs});
+  }
+
+  Future<void> acknowledgeRealityCheck() async {
+    await _post('/rg/reality-check/acknowledge', const {});
   }
 
   Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body) async {

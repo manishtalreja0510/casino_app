@@ -9,6 +9,7 @@ import '../features/crash/crash_screen.dart';
 import '../features/gallery/gallery_screen.dart';
 import '../features/poker/poker_screen.dart';
 import '../features/poker/poker_tables_screen.dart';
+import '../features/responsible_gaming/rg_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/lobby/lobby_screen.dart';
 import '../features/wallet/wallet_screen.dart';
@@ -34,6 +35,9 @@ class AppRoutes {
 
   static const String pokerTables = '/play/poker';
   static const String wallet = '/wallet';
+
+  /// The player's own limits, breaks and reality checks.
+  static const String responsibleGaming = '/playing-safely';
   static const String gallery = '/_dev/gallery';
 }
 
@@ -100,6 +104,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.wallet,
         name: 'wallet',
         builder: (context, state) => const WalletScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.responsibleGaming,
+        name: 'responsibleGaming',
+        builder: (context, state) => const ResponsibleGamingScreen(),
       ),
       GoRoute(
         // Developer-facing component gallery: the proof that every component renders

@@ -9,6 +9,7 @@ import { EngineService } from '../game-engine/engine.service';
 import { GameRegistry } from '../game-engine/game.registry';
 import { WalletService } from '../wallet/wallet.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { RgService } from '../responsible-gaming/rg.service';
 import { QueueService } from './queue.service';
 import { MatchmakingRepository, type StakeTier } from './matchmaking.repository';
 
@@ -60,9 +61,16 @@ export class MatchmakingService {
     private readonly wallet: WalletService,
     private readonly realtime: RealtimeService,
     private readonly flags: FlagsService,
+    private readonly rg: RgService,
   ) {}
 
   async joinQueue(userId: string, tierId: string): Promise<{ queued: boolean; matchId?: string }> {
+    // Responsible gaming first, before anything about the tier is even looked up: an
+    // excluded player asking to play is told they are excluded, not told the tier is full.
+    // Queueing is *entering* play rather than spending, so it is the entry check that
+    // applies here — the wallet asks about limits when the stake is actually taken.
+    await this.rg.requirePlayEntry(userId);
+
     const tier = await this.requirePlayableTier(tierId);
 
     // Round games have no queue: their "queue" is the open betting window (ADR-023).

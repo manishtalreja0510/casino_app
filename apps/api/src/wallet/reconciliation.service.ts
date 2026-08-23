@@ -3,10 +3,35 @@ import type { Pool } from 'pg';
 import { PG_POOL } from '../platform/database/database.module';
 
 export interface ReconciliationFinding {
-  check: 'transaction_balance' | 'balance_cache' | 'escrow_settled' | 'currency_consistency';
+  check:
+    | 'transaction_balance'
+    | 'balance_cache'
+    | 'escrow_settled'
+    | 'currency_consistency'
+    | 'table_escrow';
   subject: string;
   detail: string;
 }
+
+/**
+ * What a module says its escrow *should* hold.
+ *
+ * A table escrow is the one balance whose correct value lives outside the wallet: it is
+ * the money on the felt, and only the game knows how much that is. Rather than have
+ * reconciliation read `poker.seats` — which would put a wallet service inside another
+ * module's tables (rule 20) and would need editing for every game that banks at a table —
+ * the game declares the figure and the wallet compares it against the ledger.
+ */
+export interface EscrowExpectation {
+  /** The `table_id` on the escrow account. */
+  tableId: string;
+  /** What the game says is on the table, in minor units. */
+  expected: number;
+  /** Optional context for the finding, e.g. how it was derived. */
+  detail?: string;
+}
+
+export type EscrowExpectationSource = () => Promise<EscrowExpectation[]>;
 
 export interface ReconciliationReport {
   ok: boolean;
@@ -26,7 +51,20 @@ export interface ReconciliationReport {
 export class ReconciliationService {
   private readonly logger = new Logger(ReconciliationService.name);
 
+  private readonly escrowSources: EscrowExpectationSource[] = [];
+
   constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
+
+  /**
+   * Registers a game's view of what its table escrows hold.
+   *
+   * Called at bootstrap by any game that banks at a table (ADR-025). A game that never
+   * registers is not silently assumed correct — it simply has no table escrows to check,
+   * because only a table-banked game creates one.
+   */
+  registerEscrowSource(source: EscrowExpectationSource): void {
+    this.escrowSources.push(source);
+  }
 
   async run(): Promise<ReconciliationReport> {
     const findings: ReconciliationFinding[] = [];
@@ -101,6 +139,50 @@ export class ReconciliationService {
         subject: row.tx_id,
         detail: `transaction spans currencies: ${row.currencies}`,
       });
+    }
+
+    // 5. A table escrow holds exactly what is on the felt (ADR-025).
+    //
+    //    The one invariant P9 left asserted only in its tests, which is not the same thing
+    //    as watched: a test proves the code was right about the hands it played, and this
+    //    proves it is still right about the money sitting on real tables right now. Drift
+    //    here means chips exist that no stack accounts for, or a stack that no money backs
+    //    — the two shapes of "somebody's buy-in has quietly gone missing".
+    for (const source of this.escrowSources) {
+      let expectations: EscrowExpectation[];
+      try {
+        expectations = await source();
+      } catch (error) {
+        // A source that cannot answer is itself a finding: an unchecked invariant must
+        // never look the same as a satisfied one.
+        findings.push({
+          check: 'table_escrow',
+          subject: 'expectation_source',
+          detail: `could not be read: ${error instanceof Error ? error.message : 'unknown'}`,
+        });
+        continue;
+      }
+
+      for (const expectation of expectations) {
+        const held = await this.pool.query<{ amount: string }>(
+          `SELECT COALESCE(b.amount, 0)::text AS amount
+             FROM wallet.accounts a
+             LEFT JOIN wallet.balances b ON b.account_id = a.id
+            WHERE a.type = 'table_escrow' AND a.table_id = $1`,
+          [expectation.tableId],
+        );
+        const escrowAmount = Number(held.rows[0]?.amount ?? 0);
+
+        if (escrowAmount !== expectation.expected) {
+          findings.push({
+            check: 'table_escrow',
+            subject: expectation.tableId,
+            detail:
+              `escrow holds ${escrowAmount} but the table says ${expectation.expected}` +
+              (expectation.detail ? ` (${expectation.detail})` : ''),
+          });
+        }
+      }
     }
 
     const counts = await this.pool.query<{ transactions: string; accounts: string }>(

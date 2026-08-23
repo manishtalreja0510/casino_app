@@ -39,6 +39,14 @@ export interface PublicUser {
   kycLevel: string;
 }
 
+/** What a listener is told when a session begins. Opaque identifiers only (rule 15). */
+export interface SessionStarted {
+  userId: string;
+  sessionId: string;
+  deviceId?: string;
+  ip?: string;
+}
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -281,6 +289,20 @@ export class AuthService {
     return AuthService.toPublicUser(user);
   }
 
+  /**
+   * Notified when a session starts.
+   *
+   * A listener rather than a call into another module, because the only thing that wants
+   * this is the risk engine — and the risk engine already depends on auth. Inverting it
+   * would make auth depend on risk, and a login that could fail because scoring failed is
+   * a worse system than one that occasionally misses a graph edge.
+   */
+  onSessionStarted(listener: (event: SessionStarted) => void): void {
+    this.sessionListeners.push(listener);
+  }
+
+  private readonly sessionListeners: Array<(event: SessionStarted) => void> = [];
+
   private async startSession(
     client: Parameters<typeof this.repository.createSession>[0],
     user: UserRow,
@@ -304,6 +326,21 @@ export class AuthService {
       tokenHash: refresh.hash,
       expiresAt: TokenService.refreshExpiry(),
     });
+
+    // Fire-and-forget, outside the transaction and never awaited: observation is
+    // best-effort by design (see `onSessionStarted`).
+    for (const listener of this.sessionListeners) {
+      try {
+        listener({
+          userId: user.id,
+          sessionId,
+          ...(deviceId ? { deviceId } : {}),
+          ...(context.ip ? { ip: context.ip } : {}),
+        });
+      } catch {
+        // A listener must never be able to fail a login.
+      }
+    }
 
     const accessToken = this.tokens.issueAccessToken({
       sub: user.id,
@@ -331,9 +368,21 @@ export class AuthService {
     };
   }
 
-  /** Account states that may not transact or sign in. */
+  /**
+   * Account states that may not sign in.
+   *
+   * `self_excluded` **may** sign in, deliberately (`responsible-gaming.md §5`). A player
+   * who has excluded themselves still needs to see that they did, see when it ends, and
+   * reach support — and an exclusion they cannot look at is a safety feature that produces
+   * support tickets and suspicion in equal measure. Nothing is unlocked by letting them in:
+   * every money and play path asks responsible gaming first (ADR-026), and it refuses.
+   *
+   * `suspended` and `closed` still cannot sign in. A suspension is the risk engine's or an
+   * admin's decision rather than the player's, and the refusal carries the support path.
+   */
   static assertUsable(user: { status: AccountStatus }): void {
-    if (user.status !== 'active') throw new AccountUnavailableError(user.status);
+    if (user.status === 'active' || user.status === 'self_excluded') return;
+    throw new AccountUnavailableError(user.status);
   }
 
   static normaliseEmail(email: string): string {
