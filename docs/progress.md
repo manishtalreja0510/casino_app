@@ -15,8 +15,8 @@ Update this file in the same PR as any status change. BLOCKED entries must name 
 | P3 | Auth & identity | COMPLETE | 2026-08-23 · `phases/PHASE-03-auth-identity.md` |
 | P4 | Wallet & ledger (test currency) | COMPLETE | 2026-08-23 · `phases/PHASE-04-wallet-ledger.md` |
 | P5 | Real-time core | COMPLETE | 2026-08-23 · `phases/PHASE-05-realtime-core.md` |
-| P6 | Game engine & contract | IMPLEMENTING | Plan: `phases/PHASE-06-game-engine.md` |
-| P7 | Matchmaking & lobby | NOT_STARTED | needs P6 |
+| P6 | Game engine & contract | COMPLETE | 2026-08-23 · `phases/PHASE-06-game-engine.md` |
+| P7 | Matchmaking & lobby | NOT_STARTED | P6 complete — ready to plan |
 | P8 | Casino game #1 (test currency) | NOT_STARTED | needs P7; game choice = OQ-05 (rec: Crash) |
 | P9 | Poker (test currency) | NOT_STARTED | needs P7; variant = OQ-07 (rec: NLHE cash) |
 | P10 | Risk & responsible gaming v1 | NOT_STARTED | needs P8 or P9 |
