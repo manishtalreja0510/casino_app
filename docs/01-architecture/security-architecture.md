@@ -54,13 +54,13 @@ No secrets in code, repo, git history, or binary — **ever** (rule 14, no ADR m
 
 Double-entry append-only ledger with DB-enforced invariants (zero-sum deferred constraint trigger, revoked UPDATE/DELETE + trigger guard, non-negative user balances, reversal-only corrections), idempotency keys on every mutating op, ordered row locking — `database-architecture.md §3–4`. **Reconciliation-with-paging** is the detection layer: scheduled jobs verify Σ=0, balance-vs-derived, escrow-vs-open-matches, later PSP statements; any drift pages a human and freezes the affected scope, never auto-corrects (rule 9). Games can't reach money at all — settlement only via game-engine → wallet (rule 10). Withdrawals: KYC gate + risk check + threshold-based manual review.
 
-## 7. Game fairness (summary — `docs/04-security/game-fairness.md`, ADR-016 PROPOSED)
+## 7. Game fairness (summary — `docs/04-security/game-security.md`, ADR-016 PROPOSED)
 
 - All randomness server-side from a CSPRNG behind the `RngService` port; every draw audit-logged (`engine.rng_draws`). The port is the swap point for a **certified RNG (GLI-19-style)** when OQ-01 fixes the certification requirement; commit-reveal provable fairness optional per game (recommended for Crash).
 - **Information hiding is structural:** `playerView(state, playerId)` is the only serialization path to clients; hidden info never enters a payload addressed to a non-owner. Tested adversarially (P9 protocol tests: requesting others' hole cards must yield nothing).
 - Server-authoritative timers; client timers are cosmetic. Full game-state truth in the PG event log — disputes are replayable.
 
-## 8. Risk engine — the security nervous system (summary — ADR-018, `docs/02-domains/risk-engine.md`)
+## 8. Risk engine — the security nervous system (summary — ADR-018, `docs/02-domains/fraud-risk.md`)
 
 **All signals flow to `risk`:** client hardening telemetry (root/hook/emulator/signature, Play Integrity per OQ-12), velocity anomalies, device/IP/network graphs, gameplay statistics (collusion, chip-dumping), auth anomalies (refresh reuse, geo jumps, signing failures), payment patterns. Rules + scores per user/session; actions escalate **allow → flag → limit → review → freeze**. Design principle: **degrade, don't hard-block** on client-side signals — silent degradation and manual review beat giving attackers a clean oracle for what gets detected. Freeze (per-user kill) is reserved for high-confidence or money-endangering cases and always leaves a support path.
 
@@ -86,6 +86,6 @@ Append-only, hash-chained `audit.audit_log` (`database-architecture.md §6`) rec
 | `network-security.md` | TLS, SPKI pinning + rotation, WAF/edge, origin isolation, rate limiting, update-channel transport security |
 | `mobile-app-hardening.md` | obfuscation, root/emulator/hook detection, signature self-check, Play Integrity (OQ-12), signal reporting |
 | `financial-security.md` | ledger invariants, idempotency, locking, reconciliation, withdrawal controls |
-| `game-fairness.md` | RNG service, certification path, commit-reveal, playerView information hiding, dispute replay |
+| `game-security.md` | RNG service, certification path, commit-reveal, playerView information hiding, dispute replay |
 | `secrets-management.md` | secret manager usage (OQ-06), rotation, CI secrets, leak response |
 | `security-checklist.md` | the per-phase mandatory checklist |

@@ -21,7 +21,7 @@ The thin top of the pyramid ([testing-strategy.md §1](./testing-strategy.md)): 
 | E6 | Self-exclusion enforcement: self-exclude → matchmaking, faucet, and game join blocked immediately; state survives re-login | P10 | emulator |
 | E7 | Admin critical paths (Playwright): 2FA login → user search/suspend → kill-switch toggle → risk-queue action → audit entries present | P12 | browser |
 | E8 | Update-channel e2e: install previous release APK → in-app updater prompts → checksum + manifest signature verified → install new version → app healthy | P13, **run per release** | device |
-| E9 | New-device login notification delivered in-app (and via FCM where Play services present) | P11 | emulator |
+| E9 | New-device login notification delivered in-app (and via the push transport where available — FCM per OQ-09 recommendation) | P11 | emulator |
 
 Catalog grows only by phase-plan decision; every journey maps to a roadmap acceptance criterion. KYC/deposit/withdrawal journeys join at P16/P17 (against provider sandboxes; fake-provider versions exist earlier on staging per [integration-testing.md §8](./integration-testing.md)).
 

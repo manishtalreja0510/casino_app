@@ -51,6 +51,7 @@ interface GameDefinition<S extends GameState, A extends GameAction, C extends Ga
 
 interface GameCtx {
   matchId: string;                   // UUIDv7
+  meta: MatchMeta;                   // match metadata: players, stakes, config (game-engine.md §4)
   rng: RngService;                   // §8 — CSPRNG draws, audit-logged
   clock: Clock;                      // ctx.clock.now() — never Date.now()
   logger: GameLogger;                // structured, no PII (rule 15)
@@ -159,6 +160,8 @@ buy-in:   user wallet ──► match_escrow (per-match account)   [at created�
 settle:   match_escrow ──► winners' wallets + rake ──► house rake account
 refund:   match_escrow ──► users, via reversal               [voided path]
 ```
+
+Poker refines this per-match model to a **table-scoped escrow** (stacks persist across hand-matches; per-hand ledger movement is rake only) — `docs/02-domains/poker.md §5`.
 
 - Games emit `SettlementInstruction[]` — pure data. The engine hands them to the wallet domain service, which applies them as **one ledger transaction, idempotent by matchId** (entries sum to zero, escrow ends at zero, rule 5/6).
 - Engine validates instructions before applying: total ≤ escrowed amount, currency match, known accounts, rake within config. A game cannot mint money even by bug — invalid instructions fail settlement into an alerted, human-review state, not a partial payout.

@@ -32,7 +32,7 @@ Room membership is server-assigned only — clients never join rooms by request;
 
 Per the canonical auth model (`docs/04-security/authentication-security.md`, ADR-013):
 
-1. Client calls REST `POST /api/v1/realtime/ticket` (authenticated, device-bound) → one-time WS ticket: short TTL (~30 s), single-use, bound to session + device, stored in Redis.
+1. Client calls REST `POST /api/v1/auth/ws-ticket` (authenticated, device-bound) → one-time WS ticket: short TTL (~30 s), single-use, bound to session + device, stored in Redis.
 2. Client opens the Socket.IO connection with the ticket in the handshake auth payload.
 3. Gateway atomically consumes the ticket (Redis `GETDEL`) — replay of a ticket fails. Socket is bound to `{userId, sessionId, deviceId}` and joined to `user:{userId}`.
 4. Session revocation (logout-everywhere, freeze, kill-switch) force-disconnects the user's sockets via an internal event on the adapter.
@@ -62,7 +62,7 @@ Versioned event schemas live in `packages/contracts` (WS event schemas → gener
   "seq": 4711,                 // per-room monotonic sequence (see §7)
   "ts": "2026-08-23T10:15:04.211Z", // server timestamp (UTC)
   "room": "match:0198f3e2-…",  // room the seq belongs to
-  "type": "game.action_applied",
+  "type": "game:event",        // event names per websocket-conventions.md §3; occurrences are payload subtypes
   "payload": { }               // schema per type, versioned in contracts
 }
 ```
@@ -73,7 +73,7 @@ Versioned event schemas live in `packages/contracts` (WS event schemas → gener
 
 ## 7. Client acks
 
-Client→server messages use Socket.IO acks as the RPC pattern: the gateway ack carries `{accepted: true, seq}` or a typed error (`rejected(code)`, e.g. `NOT_YOUR_TURN`, `INVALID_ACTION`, `RATE_LIMITED`). Client actions carry a client-generated `actionId` (UUIDv7) so a re-send after an ack timeout is deduplicated server-side (engine keeps recent actionIds per match) — the client may retry safely without double-acting. Server→client events are **not** individually acked; the `seq` protocol replaces per-event acks (cheaper, and recovery is pull-based).
+Client→server messages use Socket.IO acks as the RPC pattern: the gateway ack carries `{accepted: true, seq}` or `{accepted: false, error: {code, …}}` with codes from the shared contracts registry (e.g. `GAME_NOT_YOUR_TURN`, `GAME_INVALID_ACTION`, `RATE_LIMITED` — `websocket-conventions.md §9`). Client actions carry a client-generated `actionId` (UUIDv7) so a re-send after an ack timeout is deduplicated server-side (engine keeps recent actionIds per match) — the client may retry safely without double-acting. Server→client events are **not** individually acked; the `seq` protocol replaces per-event acks (cheaper, and recovery is pull-based).
 
 ## 8. Resume protocol
 
@@ -102,7 +102,7 @@ Server-authoritative timers only (rule 2): turn clocks, betting-round timeouts, 
 All client→server events are hostile input (rule 1):
 
 - **Payload validation**: every event validated against its contracts schema at the gateway (shape, size, enum ranges) before reaching any handler; oversize payloads (hard cap, ~4 KB default) are rejected and the socket counted against abuse limits. The engine then re-validates semantically in `reduce`.
-- **Rate limiting**: Redis token buckets per socket, per user, and per event class (game actions get a per-turn budget; lobby queries a coarser one). Exceeding → `RATE_LIMITED` ack errors, then disconnect on sustained abuse, then a risk-engine signal (`docs/02-domains/risk.md`).
+- **Rate limiting**: Redis token buckets per socket, per user, and per event class (game actions get a per-turn budget; lobby queries a coarser one). Exceeding → `RATE_LIMITED` ack errors, then disconnect on sustained abuse, then a risk-engine signal (`docs/02-domains/fraud-risk.md`).
 - **Backpressure (outbound)**: per-socket send-buffer watermarks; a client that cannot drain (slow network, stalled reader) is disconnected past the high watermark rather than ballooning server memory — it can resume via §8. Room fan-out never blocks the engine: emits are fire-and-forget from the engine's perspective, with the ring buffer + resume covering losses.
 - Unauthenticated sockets get one shot: no valid ticket in handshake → immediate disconnect; per-IP connection-attempt limits at gateway and WAF.
 

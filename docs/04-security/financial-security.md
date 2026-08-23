@@ -79,7 +79,7 @@ Deliberately lighter than withdrawals (money flows in): controls are §3 idempot
 
 Reconciliation is the financial IDS, not bookkeeping hygiene (rule 9):
 
-- Scheduled jobs: entries-sum-zero per transaction; `balances` == derived sums; escrow == open matches; (P17+) PSP statement matching.
+- Scheduled jobs: entries-sum-zero per transaction; `balances` == derived sums; escrow == open matches (for poker's table-scoped escrow: table escrow == Σ seated stacks + in-progress pots, `../02-domains/poker.md §5`); (P17+) PSP statement matching.
 - **Any drift pages a human and freezes the affected scope** (account, game, or payment rail — narrowest scope that contains the anomaly). Never auto-corrected, never silently logged: an unexplained cent is evidence of a bug or an attack until proven otherwise.
 - Freeze scopes are pre-defined so the on-call decision is "which scope", not "what do we even freeze" (`../07-operations/runbooks.md`).
 

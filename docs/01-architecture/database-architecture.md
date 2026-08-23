@@ -51,6 +51,8 @@ CREATE TABLE wallet.accounts (
   UNIQUE (user_id, currency),                      -- one wallet per user+currency
   UNIQUE (match_id, currency)                      -- one escrow per match+currency
 );
+-- Poker refinement: its escrow account is table-scoped (match_id holds the table-instance
+-- id; one escrow spans that table's hand-matches) — docs/02-domains/poker.md §5.
 
 CREATE TABLE wallet.ledger_transactions (
   id              uuid PRIMARY KEY,

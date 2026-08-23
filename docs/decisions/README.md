@@ -58,15 +58,13 @@ Relative paths to related docs, ADR-nnn, OQ-nn, phases P-nn.
 | [ADR-008](ADR-008-double-entry-ledger.md) | Double-entry financial ledger | ACCEPTED |
 | [ADR-009](ADR-009-modular-game-contract.md) | Modular game contract (`GameDefinition`) | ACCEPTED |
 | [ADR-010](ADR-010-testing-strategy.md) | Testing strategy | ACCEPTED |
-| ADR-011 | Secrets & config management + secret-manager/cloud comparison | PROPOSED (OQ-06) |
-| ADR-012 | Environment & flavor strategy | ACCEPTED |
-| ADR-013 | Network security (pinning + rotation, token model, request signing) | ACCEPTED |
-| ADR-014 | Payment-provider abstraction | PROPOSED (OQ-02) |
-| ADR-015 | KYC-provider abstraction | PROPOSED (OQ-03) |
-| ADR-016 | RNG & fairness (certification lab pending) | PROPOSED (OQ-01) |
-| ADR-017 | Off-store distribution & forced update | ACCEPTED |
-| ADR-018 | Fraud/risk engine approach | ACCEPTED |
-| ADR-019 | Placeholder-first UI & design-token migration | ACCEPTED |
-| ADR-020 | Data access layer (Drizzle, SQL-first migrations) | ACCEPTED |
-
-ADR-011 through ADR-020 are authored in a parallel documentation pass; titles and statuses above are canonical regardless of file arrival order.
+| [ADR-011](ADR-011-secrets-and-configuration-management.md) | Secrets & config management + secret-manager/cloud comparison | PROPOSED (OQ-06) |
+| [ADR-012](ADR-012-environment-and-flavor-strategy.md) | Environment & flavor strategy | ACCEPTED |
+| [ADR-013](ADR-013-network-security-model.md) | Network security (pinning + rotation, token model, request signing) | ACCEPTED |
+| [ADR-014](ADR-014-payment-provider-abstraction.md) | Payment-provider abstraction | PROPOSED (OQ-02) |
+| [ADR-015](ADR-015-kyc-provider-abstraction.md) | KYC-provider abstraction | PROPOSED (OQ-03) |
+| [ADR-016](ADR-016-rng-and-fairness.md) | RNG & fairness (certification lab pending) | PROPOSED (OQ-01) |
+| [ADR-017](ADR-017-offstore-distribution-and-forced-update.md) | Off-store distribution & forced update | ACCEPTED |
+| [ADR-018](ADR-018-fraud-risk-engine-approach.md) | Fraud/risk engine approach | ACCEPTED |
+| [ADR-019](ADR-019-placeholder-first-ui.md) | Placeholder-first UI & design-token migration | ACCEPTED |
+| [ADR-020](ADR-020-data-access-layer.md) | Data access layer (Drizzle, SQL-first migrations) | ACCEPTED |

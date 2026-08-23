@@ -26,7 +26,7 @@ Implementation: SQL views / query layer over `ledger_transactions` + `ledger_ent
 
 ## 3. History API
 
-`GET /api/v1/wallet/activity` — **cursor pagination** (opaque cursor encoding (created_at, id) per `../03-api/api-conventions.md`; no offsets), newest-first. Filters: `type[]`, `currency`, `from`/`to` (timestamptz), `matchId`, `status` (pending/completed/failed — payments). Item shape: `{ ref, type, status, amount, currency, balance_after?, created_at, match_ref?, payment_status?, display_key }` — `display_key` is a translation key + params (client renders localized text; server sends no prose). `GET /api/v1/wallet/activity/{ref}` for detail (entries summary in user terms, related refs, timestamps). `balance_after` is the user's wallet balance version after that transaction — computable because balance updates are same-tx with entries (`./wallet.md` §1).
+`GET /api/v1/wallet/activity` — **cursor pagination** (opaque cursor encoding (created_at, id) per `../03-api/api-conventions.md`; no offsets), newest-first. Filters: `type[]`, `currency`, `from`/`to` (timestamptz), `matchId`, `status` (pending/completed/failed — payments). Item shape: `{ ref, type, status, amount: {amount, currency}, balanceAfter?, createdAt, matchRef?, paymentStatus?, displayKey }` (camelCase + money-object per `../03-api/api-conventions.md` §2) — `displayKey` is a translation key + params (client renders localized text; server sends no prose). `GET /api/v1/wallet/activity/{ref}` for detail (entries summary in user terms, related refs, timestamps). `balanceAfter` is the user's wallet balance version after that transaction — computable because balance updates are same-tx with entries (`./wallet.md` §1).
 
 ## 4. Receipts & public references
 

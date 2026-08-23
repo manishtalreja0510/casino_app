@@ -72,7 +72,7 @@ Ordering invariant: steps 5→6 never invert. A crash between 5 and 6 is safe �
 
 ## 7. Settlement orchestration
 
-On `settling`, the engine translates `SettlementInstruction[]` into **one idempotent wallet call**: `walletEscrowService.settleMatch(matchId, instructions)` — idempotency key derived from matchId (rule 10, wallet canonical flow). Wallet performs, in a single ledger transaction: `match_escrow` → winner wallet accounts (+ rake → house rake account where configured). Invariants the engine asserts before calling: instructions sum exactly to the escrow balance for the match (escrow zeroes out — the wallet enforces this too and rejects otherwise); every payee is a participant or a house account. Retry on failure is safe (idempotent); persistent failure → match stays `settling`, alert fires, manual runbook — never partial payout.
+On `settling`, the engine translates `SettlementInstruction[]` into **one idempotent wallet call**: `walletEscrowService.settleMatch(matchId, instructions)` — idempotency key derived from matchId (rule 10, wallet canonical flow). Wallet performs, in a single ledger transaction: `match_escrow` → winner wallet accounts (+ rake → house rake account where configured). Invariants the engine asserts before calling: instructions sum exactly to the escrow balance for the match (escrow zeroes out — the wallet enforces this too and rejects otherwise); every payee is a participant or a house account. Retry on failure is safe (idempotent); persistent failure → match stays `settling`, alert fires, manual runbook — never partial payout. Poker refines this: its escrow is table-scoped and per-hand `settle` moves rake only, with the escrow-zero invariant applied at table close (`poker.md §5`).
 
 ## 8. RngService port (ADR-016)
 

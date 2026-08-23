@@ -14,7 +14,7 @@ Purpose: the **only** owner of money state. Every balance anyone ever sees deriv
   - `house_main` — house float per currency (faucet source, house-banked game counterparty).
   - `rake` — house revenue from pooled games (poker rake).
   - `bonus` — promotional pool (schema-ready; product rules later phase).
-  - `match_escrow` — **one per match**, opened at match creation, must read zero after settlement.
+  - `match_escrow` — **one per match**, opened at match creation, must read zero after settlement. (Poker refines this to a **table-scoped** `match_escrow`-class account per table instance, since stacks persist across hand-matches — `./poker.md §5`; per-match remains the general model.)
   - (P17 adds `psp_clearing` / `pending_withdrawal` — see `./payments.md`.)
 - **`ledger_transactions`** — id, **idempotency_key (unique)**, type (enum: faucet, buy_in, settlement, rake, reversal, admin_adjustment, closure_forfeit, …), ref fields (match_id, payment_id, reversed_tx_id), created_at, created_by (service principal), metadata (jsonb, no PII). The unit of atomicity and the idempotency scope.
 - **`ledger_entries`** — id, transaction_id, account_id, **amount BIGINT signed** (minor units), currency. **Sum of amounts per (transaction, currency) = 0** — enforced by deferred constraint trigger at commit. ≥2 entries per transaction.

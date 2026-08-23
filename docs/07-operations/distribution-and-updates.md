@@ -59,7 +59,7 @@ Honest framing (rule: raises attacker cost, never "prevents"):
 
 ## 5. Staged rollout & halt
 
-- New prod release starts at low `rollout` (e.g. 5%) → ramp on healthy metrics (crash-free rate via Sentry, error rates, update success) → 100%.
+- New prod release starts at low `rollout` (e.g. 5%) → ramp on healthy metrics (crash-free rate via the error tracker (Sentry per OQ-10 recommendation), error rates, update success) → 100%.
 - **Halt:** set `rollout: 0` (stops new adoption; already-updated devices stay — see §7 rollback truth in `ci-cd.md` §7: fix rolls forward).
 - Ramp/halt actions are audited platform-config changes.
 

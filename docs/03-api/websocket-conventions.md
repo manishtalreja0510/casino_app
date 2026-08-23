@@ -101,7 +101,7 @@ WS errors mirror the REST envelope and share the same `packages/contracts` code 
 
 - **No hidden information is ever broadcast to a room.** Room events carry only public state; private state goes per-socket, derived through `playerView(state, playerId)` at the contract level (rule 2). This holds for live emits, ring-buffer replay, and full resyncs alike — the serializer boundary is `playerView`, tested adversarially (P9 protocol tests).
 - **The server never trusts client timers, ordering, or timestamps.** Turn deadlines fire server-side (BullMQ delayed jobs / engine timer wheel with fencing); client countdowns are cosmetic; client-claimed send times and arrival order carry no semantic weight. Out-of-turn or expired actions are rejected regardless of what the client rendered.
-- All inbound WS traffic is hostile input (rule 1): validate at the edge, re-validate in the engine, count violations as risk signals (`../02-domains/risk.md`).
+- All inbound WS traffic is hostile input (rule 1): validate at the edge, re-validate in the engine, count violations as risk signals (`../02-domains/fraud-risk.md`).
 - Per-socket outbound backpressure: past the send-buffer high watermark the socket is disconnected (resume covers it) rather than ballooning memory.
 
 ## 12. Reconnect storms

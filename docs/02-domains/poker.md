@@ -48,7 +48,7 @@ waiting_deal → blinds → dealing → bet_preflop → deal_flop → bet_flop
 
 ## 5. Money: escrow model & rake
 
-Poker refines the canonical per-match escrow (`system-rules.md` rule 10, engine §7) to a **table-scoped escrow** (a `match_escrow`-class account per table instance), because stacks persist across hand-matches:
+Poker refines the canonical per-match escrow (`../00-project/system-rules.md` rule 10, engine §7) to a **table-scoped escrow** (a `match_escrow`-class account per table instance), because stacks persist across hand-matches:
 
 - **Sit/top-up:** user wallet → table escrow (idempotent ledger transaction).
 - **During hands:** chips move between stacks/pots as game state only — no ledger rows per bet.

@@ -139,7 +139,7 @@ Terse, actionable. Drilled in **P14** (and kill-switch/update drills before laun
 
 **Trigger:** anomalous admin audit entries, impossible-travel admin login, admin credential in leak, insider report.
 **First 15 min:** **suspend the admin account + revoke its sessions** (superadmin action, audited); if superadmin compromised or unknown scope → freeze all admin access (admin surface kill-switch) — player gameplay continues; verify `compliance.real_money_enabled` and kill-switch states untouched.
-**Steps:** audit-log replay of every action by the account since last-known-good (append-only + hash chain makes this authoritative — verify chain first) → reverse illegitimate financial effects via reversals (g discipline) → un-do config/flag changes with four-eyes → rotate admin credentials + TOTP re-enrollment; review IP-allowlist + RBAC grants; check for created/escalated accounts → root-cause entry vector (phishing, token theft, insider).
+**Steps:** audit-log replay of every action by the account since last-known-good (append-only + hash chain makes this authoritative — verify chain first) → reverse illegitimate financial effects via reversals (rule 5 — never edit ledger rows) → un-do config/flag changes with four-eyes → rotate admin credentials + TOTP re-enrollment; review IP-allowlist + RBAC grants; check for created/escalated accounts → root-cause entry vector (phishing, token theft, insider).
 **Verify:** chain intact, no residual sessions, RBAC diff vs last-known-good clean, reconciliation green.
 **Comms:** internal need-to-know during forensics; regulatory assessment (key-person/system-access duties, `../06-compliance/licensing-requirements.md` §6, OQ-01); affected players if money touched.
 **Postmortem:** always, SEV1.
