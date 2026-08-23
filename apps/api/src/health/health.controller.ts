@@ -2,11 +2,14 @@ import { Controller, Get, HttpCode, HttpStatus, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import type { HealthResponse } from '@casino/contracts';
 import { HealthService } from './health.service';
+import { Public } from '../auth/guards/access-token.guard';
 
 @Controller('health')
 export class HealthController {
   constructor(private readonly health: HealthService) {}
 
+  // Health probes must answer without credentials: orchestrators and load balancers have none.
+  @Public()
   @Get()
   @HttpCode(HttpStatus.OK)
   liveness(): HealthResponse {
@@ -17,6 +20,7 @@ export class HealthController {
    * Readiness returns 503 when this instance cannot serve, so load balancers take it out
    * of rotation. `degraded` still returns 200: the instance is usable.
    */
+  @Public()
   @Get('ready')
   async readiness(@Res() res: Response): Promise<void> {
     const result = await this.health.readiness();

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'api_error.dart';
+import 'auth_models.dart';
 import 'health.dart';
 
 /// REST client for the casino_app API.
@@ -37,6 +38,76 @@ class CasinoApiClient {
     return ReadinessResponse.fromJson(json);
   }
 
+  // ---- auth (P3) ----
+
+  Future<({AuthTokens tokens, AuthUser user})> register({
+    required String email,
+    required String password,
+    required String displayName,
+  }) async {
+    final json = await _post('/auth/register', {
+      'email': email,
+      'password': password,
+      'displayName': displayName,
+    });
+    return (
+      tokens: AuthTokens.fromJson(json),
+      user: AuthUser.fromJson(json['user'] as Map<String, dynamic>),
+    );
+  }
+
+  Future<({AuthTokens tokens, AuthUser user})> login({
+    required String email,
+    required String password,
+    String? deviceId,
+  }) async {
+    final json = await _post('/auth/login', {
+      'email': email,
+      'password': password,
+      if (deviceId != null) 'deviceId': deviceId,
+    });
+    return (
+      tokens: AuthTokens.fromJson(json),
+      user: AuthUser.fromJson(json['user'] as Map<String, dynamic>),
+    );
+  }
+
+  /// Rotates the refresh token. The returned token replaces the old one, which the
+  /// server has now consumed — reusing it is treated as theft and ends every session.
+  Future<AuthTokens> refresh(String refreshToken) async {
+    final json = await _post('/auth/refresh', {'refreshToken': refreshToken});
+    return AuthTokens.fromJson(json);
+  }
+
+  Future<void> logout() async => _post('/auth/logout', const {});
+
+  Future<AuthUser> me() async => AuthUser.fromJson(await _get('/auth/me'));
+
+  Future<List<AuthSession>> sessions() async {
+    final json = await _get('/auth/sessions');
+    return (json['sessions'] as List<dynamic>)
+        .whereType<Map<String, dynamic>>()
+        .map(AuthSession.fromJson)
+        .toList();
+  }
+
+  Future<void> revokeAllSessions() async => _post('/auth/sessions/revoke', {'all': true});
+
+  Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body) async {
+    final uri = Uri.parse('\$baseUrl\$path');
+    late final http.Response response;
+    try {
+      response = await _http
+          .post(uri, headers: await _headers(json: true), body: jsonEncode(body))
+          .timeout(timeout);
+    } on TimeoutException {
+      throw const NetworkException('timeout');
+    } catch (error) {
+      throw NetworkException(error.runtimeType.toString());
+    }
+    return _parse(response);
+  }
+
   Future<Map<String, dynamic>> _get(String path) async {
     final uri = Uri.parse('$baseUrl$path');
     late final http.Response response;
@@ -52,8 +123,9 @@ class CasinoApiClient {
     return _parse(response);
   }
 
-  Future<Map<String, String>> _headers() async {
+  Future<Map<String, String>> _headers({bool json = false}) async {
     final headers = <String, String>{'accept': 'application/json'};
+    if (json) headers['content-type'] = 'application/json';
     final token = await accessTokenProvider?.call();
     if (token != null && token.isNotEmpty) {
       headers['authorization'] = 'Bearer $token';

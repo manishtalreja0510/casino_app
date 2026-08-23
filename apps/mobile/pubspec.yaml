@@ -12,6 +12,7 @@ dependencies:
   flutter_riverpod: ^2.6.1
   go_router: ^14.6.2
   connectivity_plus: ^6.1.0
+  flutter_secure_storage: ^9.2.2
   ui_kit:
     path: packages/ui_kit
   app_assets:

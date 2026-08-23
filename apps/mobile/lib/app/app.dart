@@ -14,11 +14,10 @@ class CasinoApp extends ConsumerStatefulWidget {
 }
 
 class _CasinoAppState extends ConsumerState<CasinoApp> {
-  late final router = createRouter();
-
   @override
   Widget build(BuildContext context) {
     final config = ref.watch(appConfigProvider);
+    final router = ref.watch(routerProvider);
 
     return MaterialApp.router(
       title: config.appName,

@@ -20,6 +20,14 @@ export const envSchema = z.object({
   /** Redis — cache, queues, rate limiting. Never financial truth (rule 7). */
   REDIS_URL: z.string().url(),
 
+  /**
+   * ES256 key pair for access tokens (ADR-013). PEM, supplied by the secret manager in
+   * staging/prod and by the local .env in dev — never committed (rule 14).
+   */
+  JWT_PRIVATE_KEY: z.string().min(100),
+  JWT_PUBLIC_KEY: z.string().min(80),
+  JWT_KEY_ID: z.string().default('dev-1'),
+
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).optional(),
 });

@@ -15,6 +15,9 @@ class ApiErrorCode {
   static const String authTokenExpired = 'AUTH_TOKEN_EXPIRED';
   static const String authTokenInvalid = 'AUTH_TOKEN_INVALID';
   static const String authForbidden = 'AUTH_FORBIDDEN';
+  static const String authRefreshReuseDetected = 'AUTH_REFRESH_REUSE_DETECTED';
+  static const String authAccountSuspended = 'AUTH_ACCOUNT_SUSPENDED';
+  static const String authInvalidCredentials = 'AUTH_INVALID_CREDENTIALS';
   static const String walletInsufficientFunds = 'WALLET_INSUFFICIENT_FUNDS';
   static const String complianceRealMoneyDisabled = 'COMPLIANCE_REAL_MONEY_DISABLED';
   static const String rgSelfExcluded = 'RG_SELF_EXCLUDED';
