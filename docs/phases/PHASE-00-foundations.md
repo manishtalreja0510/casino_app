@@ -96,6 +96,8 @@ Acceptance criteria met · tests green with no skips · lint/typecheck clean · 
 
 **Runtime verification (not just tests).** The built API was started as a real process: `GET /api/v1/health` → `{"status":"ok","version":"0.0.0","environment":"dev","uptimeSeconds":0}`, `GET /api/v1/health/ready` → `{"status":"ok","dependencies":[]}`, `GET /health` → 404. Invalid config (`APP_ENV=not-a-real-env`) exits **1** with `Invalid environment configuration — APP_ENV: ...` and no value echoed. The **native fallback** path of the dev stack was exercised (the Docker daemon is unavailable here): Postgres 16 and Redis 7 came up on loopback, role/database were provisioned idempotently, and both were probed successfully with `psql` and `redis-cli`. Zero cloud resources, zero cost.
 
+**CI.** First run on this branch was green across all three jobs — `Lint, typecheck, test, build` (including the API e2e step), `Secret scanning (rule 14)` with gitleaks clean, and `Dependency audit` at high severity. Run: `actions/runs/32640843321`.
+
 **Secret hygiene.** Two `.env.example` templates tracked; the generated `.env` files are gitignored and confirmed untracked. No keystores, keys, or credentials in the tree.
 
 ## 23. Known limitations
@@ -107,7 +109,7 @@ Acceptance criteria met · tests green with no skips · lint/typecheck clean · 
 | Mobile scaffold + CI lane deferred | P0 does not prove the Flutter half of the layout | P2 (precondition: Flutter SDK) |
 | No dependency-vulnerability policy beyond `pnpm audit` | Low now, matters as deps grow | P14 |
 | Turborepo remote cache unused (local only) | Slower CI as the repo grows | When CI time justifies it |
-| gitleaks and the CI workflow itself are unexecuted locally (no gitleaks binary; Actions cannot run here) | CI config is reviewed but not proven until the first push runs it | First CI run on this branch |
+| ~~CI workflow unproven~~ **Resolved** — first run on this branch passed all three jobs (verify, gitleaks secret scan, dependency audit) | — | Done 2026-08-23 |
 | Docker Compose path unexercised (daemon unavailable here); native fallback proven instead | Compose file is config-reviewed only | First developer with Docker, or P1 |
 
 ## 25. Next-phase dependencies
