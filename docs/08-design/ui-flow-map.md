@@ -86,3 +86,39 @@ Companions: `design-system.md` (tokens/components), `asset-animation-pipeline.md
 | Date | PR | Change |
 |---|---|---|
 | 2026-08-23 | — | Seeded full planned catalog; all screens NOT_BUILT. |
+
+---
+
+## Build status (updated P2, 2026-08-23)
+
+What exists in the app today. Everything else in this document remains a plan.
+
+| Screen | Route | Status | Notes |
+|---|---|---|---|
+| Home (placeholder) | `/` | **BUILT** (P2) | Proves the chassis: config badge, connection state, server health, a zero balance. Replaced by the real lobby in P7. |
+| Component gallery | `/_dev/gallery` | **BUILT** (P2) | Developer/designer reference — every `ui_kit` component in every state. Hidden in production builds. |
+| Everything else | — | NOT_BUILT | Auth (P3), wallet (P4), lobby (P7), game screens (P8/P9), account/RG (P10), notifications (P11). |
+
+### For the designer (P19 onboarding)
+
+- **Start at the gallery** (`/_dev/gallery` in a dev build): it is the complete inventory of
+  what is styled today. Anything not there does not exist yet.
+- **The restyle surface is `apps/mobile/packages/ui_kit`**: token values in
+  `lib/src/tokens/` (colour roles, type scale, spacing/radius, motion) and component
+  internals in `lib/src/components/`. Screens do not need to change.
+- **Colour roles are semantic, not literal** — `success`/`danger` also carry win/loss, so a
+  palette change stays consistent everywhere money moves.
+- **Assets drop in under existing names** (`apps/mobile/packages/assets`): the naming
+  convention is final, placeholders are already referenced, and a missing file fails a test.
+- **Animations are intent-named wrappers** (`CardDealAnimation`, `WinCelebration`,
+  `ChipMoveAnimation`). Swapping the placeholder implementation for Rive/Lottie happens
+  inside the wrapper; no call site changes.
+- **Golden tests pin the current look**, so your restyle appears as a deliberate,
+  reviewable golden update rather than silent drift.
+
+### Rules that constrain the design (not negotiable)
+
+- Timers shown to players are **cosmetic**; the server owns every deadline (rule 2). A
+  design cannot make a client-side timer authoritative.
+- Balances are **server-provided integer minor units**, formatted for display only (rule 4).
+- Error states show a support reference (the server `traceId`) and nothing else internal (rule 15).

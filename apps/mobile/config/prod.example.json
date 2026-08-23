@@ -1,0 +1,5 @@
+{
+  "FLAVOR": "prod",
+  "API_BASE_URL": "https://api.example.invalid/api/v1",
+  "APP_NAME": "casino_app"
+}

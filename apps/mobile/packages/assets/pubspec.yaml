@@ -1,0 +1,28 @@
+name: app_assets
+description: Generated asset registry and placeholder assets. Final naming from day one.
+publish_to: none
+version: 0.0.1
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  assets:
+    - assets/images/common/
+    - assets/images/game/
+    - assets/images/brand/
+    - assets/icons/common/
+    - assets/icons/game/
+    - assets/animations/common/
+    - assets/animations/game/
+    - assets/audio/common/
+    - assets/audio/game/

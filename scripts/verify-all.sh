@@ -36,10 +36,15 @@ step "build"               pnpm build
 step "migrations"          pnpm --filter @casino/api migrate
 step "integration tests"   pnpm --filter @casino/api test:int
 
-# Flutter lanes run only once the app exists (P2) and the SDK is present.
+# Flutter lanes (P2 onward). `flutter analyze` at the app root covers the local packages;
+# tests live in each package and are run separately.
 if [ -f apps/mobile/pubspec.yaml ] && command -v flutter >/dev/null 2>&1; then
-  step "flutter analyze"   bash -c "cd apps/mobile && flutter analyze"
-  step "flutter test"      bash -c "cd apps/mobile && flutter test"
+  step "flutter analyze"        bash -c "cd apps/mobile && flutter analyze"
+  step "flutter test (app)"     bash -c "cd apps/mobile && flutter test"
+  step "flutter test (ui_kit)"  bash -c "cd apps/mobile/packages/ui_kit && flutter test"
+  step "dart test (api_client)" bash -c "cd apps/mobile/packages/api_client && dart test"
+elif [ -f apps/mobile/pubspec.yaml ]; then
+  printf '\n\033[33m⚠ Flutter lanes SKIPPED — flutter not on PATH.\033[0m\n'
 fi
 
 # Secret scanning (rule 14). gitleaks is optional locally; note loudly when absent.
