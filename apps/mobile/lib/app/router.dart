@@ -7,6 +7,8 @@ import '../features/auth/auth_screen.dart';
 import '../features/auth/auth_state.dart';
 import '../features/crash/crash_screen.dart';
 import '../features/gallery/gallery_screen.dart';
+import '../features/poker/poker_screen.dart';
+import '../features/poker/poker_tables_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/lobby/lobby_screen.dart';
 import '../features/wallet/wallet_screen.dart';
@@ -26,6 +28,11 @@ class AppRoutes {
   /// Round-based game table. The tier id is the address of the table, because a round
   /// game has no match to navigate to until one exists.
   static String crash(String tierId) => '/play/crash/$tierId';
+
+  /// A poker table, addressed by table rather than by tier: a tier has many tables.
+  static String pokerTable(String tableId) => '/play/poker/$tableId';
+
+  static const String pokerTables = '/play/poker';
   static const String wallet = '/wallet';
   static const String gallery = '/_dev/gallery';
 }
@@ -77,6 +84,17 @@ final routerProvider = Provider<GoRouter>((ref) {
         name: 'crash',
         builder: (context, state) =>
             CrashScreen(tierId: state.pathParameters['tierId'] ?? ''),
+      ),
+      GoRoute(
+        path: AppRoutes.pokerTables,
+        name: 'pokerTables',
+        builder: (context, state) => const PokerTablesScreen(),
+      ),
+      GoRoute(
+        path: '/play/poker/:tableId',
+        name: 'pokerTable',
+        builder: (context, state) =>
+            PokerScreen(tableId: state.pathParameters['tableId'] ?? ''),
       ),
       GoRoute(
         path: AppRoutes.wallet,

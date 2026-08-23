@@ -145,12 +145,19 @@ class _TierRow extends ConsumerWidget {
           SizedBox(width: t.space.sm),
         ],
         // A round game has no queue to join: its betting window *is* the queue, so the
-        // lobby sends the player to the table (ADR-023). Decided from the mode the server
-        // reports, never from the game's name.
+        // lobby sends the player to the game (ADR-023). *That* decision comes from the
+        // mode the server reports; which screen renders it is the client's own business,
+        // because only the client knows what screens it has.
         if (game.mode == LobbyMode.rounds)
           AppButton(
             label: 'Play',
-            onPressed: game.enabled ? () => context.push(AppRoutes.crash(tier.id)) : null,
+            onPressed: game.enabled
+                ? () => context.push(
+                    game.gameCode == 'poker'
+                        ? AppRoutes.pokerTables
+                        : AppRoutes.crash(tier.id),
+                  )
+                : null,
           )
         else
           AppButton(

@@ -86,7 +86,17 @@ Candidates (all multiplayer-capable, fast rounds, house-banked or pooled):
 
 ADR-011 compares HashiCorp Vault vs cloud-native secret managers, and hosting options. **Recommendation:** AWS (ECS Fargate → EKS later, RDS Postgres, ElastiCache Redis) + AWS Secrets Manager; Cloudflare in front as WAF/CDN. Vault is more powerful (dynamic DB creds, transit encryption) but is an ops burden a small team shouldn't carry at start. **Confirm before infra spend.** Until confirmed, everything infra-touching stays provider-agnostic (containers + env-var injection).
 
-## OQ-07 — Poker variant & format 🟢
+## OQ-07 — Poker variant & format 🟢 DECIDED
+
+> **Decision (2026-08-23): No-Limit Texas Hold'em, cash tables, 2–6 seats.** Taken by
+> engineering on the standing recommendation below, after the owner asked for P9 to
+> proceed without naming a variant — recorded here so it can be reversed cheaply rather
+> than assumed. **What a reversal would cost:** the betting-rule module and the hand
+> reducer's street structure. What it would *not* touch: the hand evaluator and side-pot
+> algorithm (shared by every community-card variant), tables, seats, escrow, timers,
+> hole-card delivery, or recovery. Tournaments remain out of scope — they are a lifecycle
+> layer *above* hands and reuse the hand engine unchanged (`poker.md §15`).
+
 **Status:** OPEN — recommendation made · **Blocks:** P9 planning detail
 
 **Recommendation:** No-Limit Texas Hold'em, cash tables (2–6 seats), fixed stake tiers at launch; tournaments/Sit-n-Go later (they add lifecycle complexity: registration, blind schedules, multi-table balancing). The table/seat/hand architecture in `docs/02-domains/poker.md` is variant-agnostic where cheap.

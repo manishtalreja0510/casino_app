@@ -197,7 +197,17 @@ export function runConformance<TState>(
     // multiple the game itself declares. A house-banked game with no declared bound is the
     // failure: unbounded house liability is not something to discover in production.
     const banking = meta.banking ?? 'pooled';
-    if (banking === 'pooled') {
+    if (banking === 'table') {
+      // A table-banked game keeps chips as state inside an escrow that outlives the match,
+      // so it must not pay anyone out at settlement — and it must be able to say what the
+      // house takes, since that is the only money that moves (ADR-025).
+      if (total !== 0) {
+        record('settlement', 'a table-banked game must not return payouts; chips are state');
+      }
+      if (typeof definition.rakeFor !== 'function') {
+        record('settlement', 'a table-banked game must implement rakeFor');
+      }
+    } else if (banking === 'pooled') {
       if (total > pot) {
         record('settlement', `payouts total ${total}, which exceeds the pot of ${pot}`);
       }

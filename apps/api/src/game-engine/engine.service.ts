@@ -423,12 +423,14 @@ export class EngineService {
     const instructions = payouts.map((payout) => ({ userId: payout.userId, amount: payout.amount }));
 
     // Which purse pays is a property the game declares, not something the engine infers
-    // from its code (ADR-024).
+    // from its code (ADR-024, ADR-025).
     const banking = definition.meta.banking ?? 'pooled';
     const result =
-      banking === 'house'
-        ? await this.wallet.settleHouseBanked({ matchId, payouts: instructions })
-        : await this.wallet.settle({ matchId, payouts: instructions });
+      banking === 'table'
+        ? await this.settleTableBanked(match, definition, ctx, state)
+        : banking === 'house'
+          ? await this.wallet.settleHouseBanked({ matchId, payouts: instructions })
+          : await this.wallet.settle({ matchId, payouts: instructions });
 
     await withTransaction(this.pool, async (client) => {
       await this.matches.setStatus(client, matchId, 'settled');
@@ -452,6 +454,30 @@ export class EngineService {
 
     await this.realtime.broadcast(Rooms.match(matchId), 'game:settled', { matchId, payouts });
     await this.notifyChanged(matchId);
+  }
+
+  /**
+   * Settles a table-banked match: the only money that moves is the house's cut (ADR-025).
+   *
+   * Chips are game state held inside a **table** escrow that outlives this match, so there
+   * is nothing to pay out — the winner's chips are already in the account. Rake is the one
+   * thing that leaves, and the engine posts it, never the game (rule 10).
+   */
+  private async settleTableBanked(
+    match: MatchRow,
+    definition: GameDefinition<never>,
+    ctx: GameContext,
+    state: unknown,
+  ): Promise<{ transactionId: string | null; replayed: boolean }> {
+    const tableId = String(match.config.tableId ?? '');
+    if (!tableId) {
+      // Without a table there is no escrow to take the cut from. Refusing leaves the match
+      // in `settling` for a human rather than guessing where the money lives.
+      throw new Error(`match ${match.id} is table-banked but names no table`);
+    }
+
+    const rake = definition.rakeFor ? definition.rakeFor(ctx, state as never) : 0;
+    return this.wallet.settleTableHand({ tableId, matchId: match.id, rake });
   }
 
   /**

@@ -54,7 +54,7 @@ Rules encoded in the ordering:
 | P6 | Game engine & contract | P4, P5 | — | High | High |
 | P7 | Matchmaking & lobby | P6 | — | Medium | Medium |
 | P8 | Casino game #1 — Crash (test currency) | P7 | — (OQ-05 decided) | Medium | Medium |
-| P9 | Poker (test currency) | P7 | OQ-07 (rec. exists) | High | Very high |
+| P9 | Poker — NLHE cash (test currency) | P7 | — (OQ-07 decided) | High | Very high |
 | P10 | Risk & responsible gaming v1 | P8 or P9 | — | High | High |
 | P11 | Notifications | P5 | OQ-09 (rec. exists) | Low | Medium |
 | P12 | Admin panel v1 | P4; risk queues need P10 | — | Medium | Medium |

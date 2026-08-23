@@ -4,3 +4,4 @@ export * from './errors';
 export * from './health';
 export * from './game';
 export * from './crash';
+export * from './poker';

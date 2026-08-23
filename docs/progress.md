@@ -18,8 +18,8 @@ Update this file in the same PR as any status change. BLOCKED entries must name 
 | P6 | Game engine & contract | COMPLETE | 2026-08-23 · `phases/PHASE-06-game-engine.md` |
 | P7 | Matchmaking & lobby | COMPLETE | 2026-08-23 · `phases/PHASE-07-matchmaking-lobby.md` |
 | P8 | Casino game #1 — Crash (test currency) | COMPLETE | 2026-08-23 · `phases/PHASE-08-casino-game-crash.md` · OQ-05 decided: Crash · ADR-023, ADR-024 |
-| P9 | Poker (test currency) | IMPLEMENTING | 2026-08-23 · `phases/PHASE-09-poker.md` · blocker cleared: private events are routed, not filtered (ADR-023 §4b, `hidden-info.int-spec.ts`) |
-| P10 | Risk & responsible gaming v1 | NOT_STARTED | needs P8 or P9 |
+| P9 | Poker — NLHE cash (test currency) | COMPLETE | 2026-08-23 · `phases/PHASE-09-poker.md` · OQ-07 decided: NLHE cash · ADR-025 · blocker cleared first (ADR-023 §4b) |
+| P10 | Risk & responsible gaming v1 | NOT_STARTED | P8 and P9 complete; poker exports the collusion surface (`poker.md §14`) |
 | P11 | Notifications | NOT_STARTED | needs P5; transport = OQ-09 |
 | P12 | Admin panel v1 | NOT_STARTED | needs P4 (risk queues need P10) |
 | P13 | Distribution & updates (narrowed) | NOT_STARTED | server-side min-version enforcement only; channel owned by separate team |
@@ -32,4 +32,4 @@ Update this file in the same PR as any status change. BLOCKED entries must name 
 | P20 | iOS | BLOCKED | OQ-04 (unscheduled) |
 
 ## Open-question status snapshot
-See `docs/00-project/open-questions.md` for detail. **Decided/handled:** OQ-01 (delegated), OQ-02 (deferred; direct-credit interim), OQ-03 (deferred; L0 only), OQ-06 (AWS confirmed + local-first mandate). **Still open, none blocking current work:** OQ-04 (iOS), OQ-07 (poker variant — needed by P9), OQ-08..OQ-14. **Newly decided:** OQ-05 — **Crash**, taken by engineering on the standing recommendation and reversible at the cost of one game module plus two UI components (see the OQ entry).
+See `docs/00-project/open-questions.md` for detail. **Decided/handled:** OQ-01 (delegated), OQ-02 (deferred; direct-credit interim), OQ-03 (deferred; L0 only), OQ-06 (AWS confirmed + local-first mandate). **Still open, none blocking current work:** OQ-04 (iOS), OQ-08..OQ-14. **Newly decided:** OQ-05 — **Crash** and OQ-07 — **No-Limit Hold'em cash tables**, both taken by engineering on the standing recommendations and both reversible at the cost of a game module plus its UI (see the OQ entries).

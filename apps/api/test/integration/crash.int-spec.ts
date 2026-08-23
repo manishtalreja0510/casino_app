@@ -91,12 +91,30 @@ describe('crash (integration)', () => {
    * for one — asserting immediately would be testing a race.
    */
   async function waitForStatus(matchId: string, status: string, timeoutMs = 5_000): Promise<void> {
+    await waitForAnyStatus(matchId, [status], timeoutMs);
+  }
+
+  /**
+   * Waits for a match to reach any of several statuses.
+   *
+   * Needed because a round can pass through a state faster than a poll can see it: about
+   * three rounds in a hundred crash at 1.00x, whose flight lasts zero milliseconds, so a
+   * test waiting to observe `in_progress` will sometimes find `settled` and be right to.
+   * Asserting on a state the game is allowed to skip is a test bug, not a finding.
+   */
+  async function waitForAnyStatus(
+    matchId: string,
+    statuses: string[],
+    timeoutMs = 5_000,
+  ): Promise<string> {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       const match = await matches.findMatch(matchId);
-      if (match?.status === status) return;
+      if (match && statuses.includes(match.status)) return match.status;
       if (Date.now() > deadline) {
-        throw new Error(`match ${matchId} is ${match?.status ?? 'missing'}, expected ${status}`);
+        throw new Error(
+          `match ${matchId} is ${match?.status ?? 'missing'}, expected one of ${statuses.join(', ')}`,
+        );
       }
       await sleep(50);
     }
@@ -450,15 +468,19 @@ describe('crash (integration)', () => {
       expect(bet.balance).toBe(95_000);
       expect((await crash.roundFor(tierId)).bets).toHaveLength(1);
 
-      // The window closes on its own, and the round lifts off with whoever bet.
-      await waitForStatus(round.matchId, 'in_progress');
-      const flying = await crash.roundFor(tierId);
-      expect(flying.matchId).toBe(round.matchId);
-      expect(flying.phase).toBe('flying');
-      expect(flying.startedAt).not.toBeNull();
+      // The window closes on its own, and the round lifts off with whoever bet. It may
+      // already have crashed by the time this looks — an instant bust flies for zero
+      // milliseconds — so the assertion is that the round *ran*, not that it was caught
+      // mid-flight.
+      await waitForAnyStatus(round.matchId, ['in_progress', 'settling', 'settled']);
 
-      await engine.handleTimeout(flying.matchId, CRASH_TIMER_ID);
-      await waitForStatus(flying.matchId, 'settled');
+      const flown = await crash.roundFor(tierId);
+      expect(flown.matchId).toBe(round.matchId);
+      expect(flown.phase === 'flying' || flown.phase === 'crashed').toBe(true);
+      expect(flown.startedAt).not.toBeNull();
+
+      await engine.handleTimeout(flown.matchId, CRASH_TIMER_ID);
+      await waitForStatus(flown.matchId, 'settled');
     });
 
     it('voids a round nobody bet in, without a ledger entry', async () => {

@@ -13,7 +13,7 @@ export interface LedgerEntryInput {
 }
 
 export interface PostInput {
-  type: 'funding' | 'buy_in' | 'settlement' | 'reversal' | 'adjustment';
+  type: 'funding' | 'buy_in' | 'settlement' | 'rake' | 'reversal' | 'adjustment';
   /** Uniqueness key for the whole operation. A replay returns the original transaction. */
   idempotencyKey: string;
   entries: LedgerEntryInput[];

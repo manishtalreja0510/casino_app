@@ -1,6 +1,7 @@
 import { runConformance } from './conformance';
 import { coinDuel, type CoinDuelState } from './games/coin-duel.game';
 import { CRASH_TIMER_ID, crash, type CrashState } from '../games/crash/crash.game';
+import { poker, type PokerState } from '../games/poker/poker.game';
 import { commitmentFor, crashPointFromSeed, TICK_MS } from '../games/crash/crash.math';
 
 /**
@@ -85,6 +86,67 @@ describe('game conformance suite', () => {
       clock: [t0, t0 + 20 * TICK_MS],
       script: [{ type: 'cashout', userId: 'player-a' }],
       finalTimerId: CRASH_TIMER_ID,
+    });
+
+    expect(findings.some((finding) => finding.check === 'settlement')).toBe(true);
+  });
+
+  it('poker conforms — a third game, a third settlement model', () => {
+    // Poker is the awkward one for the suite: it is table-banked, so it must pay out
+    // nothing at settlement, and its hand ends on a fold rather than on a scripted run of
+    // actions. Running it here proves the contract holds for a game whose chips are state
+    // rather than money.
+    const t0 = 1_700_000_000_000;
+
+    const findings = runConformance<PokerState>(poker, {
+      players: [
+        { userId: 'player-a', seat: 0, stake: 0, meta: { seat: 0, order: 0, stack: 1_000 } },
+        { userId: 'player-b', seat: 1, stake: 0, meta: { seat: 1, order: 1, stack: 1_000 } },
+      ],
+      config: {
+        blinds: { sb: 10, bb: 20 },
+        buyIn: { min: 400, max: 2_000 },
+        turnTimerMs: 15_000,
+        timebankMs: 0,
+        timebankStepMs: 10_000,
+        rake: { bps: 0, cap: 0 },
+        buttonOrder: 1,
+        muckLosers: true,
+      },
+      clock: [t0, t0 + 1_000, t0 + 2_000, t0 + 3_000],
+      // Heads-up the button acts first before the flop; folding ends the hand at once.
+      script: [{ type: 'fold', userId: 'player-b' }],
+    });
+
+    expect(findings).toEqual([]);
+  });
+
+  it('catches a table-banked game that pays out at settlement', () => {
+    // Chips are already in the table's escrow. A table-banked game that also returned
+    // payouts would move the same chips twice — once as state, once as money.
+    const doublePaying = {
+      ...poker,
+      settle: () => [{ userId: 'player-a', amount: 500 }],
+    } as typeof poker;
+
+    const t0 = 1_700_000_000_000;
+    const findings = runConformance<PokerState>(doublePaying, {
+      players: [
+        { userId: 'player-a', seat: 0, stake: 0, meta: { seat: 0, order: 0, stack: 1_000 } },
+        { userId: 'player-b', seat: 1, stake: 0, meta: { seat: 1, order: 1, stack: 1_000 } },
+      ],
+      config: {
+        blinds: { sb: 10, bb: 20 },
+        buyIn: { min: 400, max: 2_000 },
+        turnTimerMs: 15_000,
+        timebankMs: 0,
+        timebankStepMs: 10_000,
+        rake: { bps: 0, cap: 0 },
+        buttonOrder: 1,
+        muckLosers: true,
+      },
+      clock: [t0, t0 + 1_000, t0 + 2_000],
+      script: [{ type: 'fold', userId: 'player-b' }],
     });
 
     expect(findings.some((finding) => finding.check === 'settlement')).toBe(true);

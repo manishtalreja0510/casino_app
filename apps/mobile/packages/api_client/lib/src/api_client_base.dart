@@ -9,6 +9,7 @@ import 'crash_models.dart';
 import 'health.dart';
 import 'lobby_models.dart';
 import 'money.dart';
+import 'poker_models.dart';
 import 'wallet_models.dart';
 
 /// REST client for the casino_app API.
@@ -149,6 +150,44 @@ class CasinoApiClient {
   /// clock, and a client-sent number would be a number an attacker chooses (rule 1).
   Future<CrashCashOut> crashCashOut(String matchId) async {
     return CrashCashOut.fromJson(await _post('/games/crash/rounds/$matchId/cash-out', const {}));
+  }
+
+  // ---- poker (P9) ----
+
+  Future<List<PokerTableSummary>> pokerTables() async {
+    final json = await _get('/games/poker/tables');
+    return (json['tables'] as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .map(PokerTableSummary.fromJson)
+        .toList();
+  }
+
+  /// The table as this caller may see it: their own hand if seated, the public one if not.
+  Future<PokerTable> pokerTable(String tableId) async {
+    return PokerTable.fromJson(await _get('/games/poker/tables/$tableId'));
+  }
+
+  Future<PokerTable> sitAtPokerTable(String tableId, {required int buyIn, int? seatNo}) async {
+    await _post('/games/poker/tables/$tableId/sit', {
+      'buyIn': buyIn,
+      if (seatNo != null) 'seatNo': seatNo,
+    });
+    return pokerTable(tableId);
+  }
+
+  Future<PokerTable> standFromPokerTable(String tableId) async {
+    await _post('/games/poker/tables/$tableId/stand', const {});
+    return pokerTable(tableId);
+  }
+
+  /// Sends an intent. The amount is a total-for-this-street; the server validates it and
+  /// is the only thing that decides whether the action is legal.
+  Future<PokerTable> actAtPokerTable(String tableId, {required String type, int? amount}) async {
+    final json = await _post('/games/poker/tables/$tableId/actions', {
+      'type': type,
+      if (amount != null) 'amount': amount,
+    });
+    return PokerTable.fromJson(json);
   }
 
   /// Obtains a single-use WebSocket ticket (P5). Each connection needs a fresh one.

@@ -9,13 +9,16 @@ export type AccountType =
   | 'house_dev_funding'
   | 'rake'
   | 'bonus'
-  | 'match_escrow';
+  | 'match_escrow'
+  /** Poker: an escrow that outlives every hand played at a table (ADR-025). */
+  | 'table_escrow';
 
 export interface AccountRow {
   id: string;
   type: AccountType;
   userId: string | null;
   matchId: string | null;
+  tableId: string | null;
   currency: string;
 }
 
@@ -48,7 +51,7 @@ export class WalletRepository {
       [uuidv7(), userId, currency],
     );
     const { rows } = await client.query(
-      `SELECT id, type, user_id, match_id, currency FROM wallet.accounts
+      `SELECT id, type, user_id, match_id, table_id, currency FROM wallet.accounts
         WHERE user_id = $1 AND currency = $2`,
       [userId, currency],
     );
@@ -63,13 +66,37 @@ export class WalletRepository {
     await client.query(
       `INSERT INTO wallet.accounts (id, type, currency)
        VALUES ($1, $2, $3)
-       ON CONFLICT (type, currency) WHERE user_id IS NULL AND match_id IS NULL DO NOTHING`,
+       ON CONFLICT (type, currency)
+         WHERE user_id IS NULL AND match_id IS NULL AND table_id IS NULL DO NOTHING`,
       [uuidv7(), type, currency],
     );
     const { rows } = await client.query(
-      `SELECT id, type, user_id, match_id, currency FROM wallet.accounts
-        WHERE type = $1 AND currency = $2 AND user_id IS NULL AND match_id IS NULL`,
+      `SELECT id, type, user_id, match_id, table_id, currency FROM wallet.accounts
+        WHERE type = $1 AND currency = $2
+          AND user_id IS NULL AND match_id IS NULL AND table_id IS NULL`,
       [type, currency],
+    );
+    return WalletRepository.toAccount(rows[0]);
+  }
+
+  /**
+   * Escrow for a **table** — where poker stacks live (ADR-025).
+   *
+   * Distinct from a match escrow because it outlives every hand at the table: money enters
+   * when someone sits down and leaves when they stand up, and the hands in between move
+   * nothing but rake.
+   */
+  async ensureTableAccount(client: PoolClient, tableId: string, currency: string): Promise<AccountRow> {
+    await client.query(
+      `INSERT INTO wallet.accounts (id, type, table_id, currency)
+       VALUES ($1, 'table_escrow', $2, $3)
+       ON CONFLICT (table_id, currency) WHERE table_id IS NOT NULL DO NOTHING`,
+      [uuidv7(), tableId, currency],
+    );
+    const { rows } = await client.query(
+      `SELECT id, type, user_id, match_id, table_id, currency FROM wallet.accounts
+        WHERE table_id = $1 AND currency = $2`,
+      [tableId, currency],
     );
     return WalletRepository.toAccount(rows[0]);
   }
@@ -83,7 +110,7 @@ export class WalletRepository {
       [uuidv7(), matchId, currency],
     );
     const { rows } = await client.query(
-      `SELECT id, type, user_id, match_id, currency FROM wallet.accounts
+      `SELECT id, type, user_id, match_id, table_id, currency FROM wallet.accounts
         WHERE match_id = $1 AND currency = $2`,
       [matchId, currency],
     );
@@ -92,7 +119,7 @@ export class WalletRepository {
 
   async findUserAccount(userId: string, currency: string): Promise<AccountRow | null> {
     const { rows } = await this.pool.query(
-      `SELECT id, type, user_id, match_id, currency FROM wallet.accounts
+      `SELECT id, type, user_id, match_id, table_id, currency FROM wallet.accounts
         WHERE user_id = $1 AND currency = $2`,
       [userId, currency],
     );
@@ -169,6 +196,7 @@ export class WalletRepository {
     type: AccountType;
     user_id: string | null;
     match_id: string | null;
+    table_id: string | null;
     currency: string;
   }): AccountRow {
     return {
@@ -176,6 +204,7 @@ export class WalletRepository {
       type: row.type,
       userId: row.user_id,
       matchId: row.match_id,
+      tableId: row.table_id,
       currency: row.currency,
     };
   }

@@ -19,7 +19,7 @@ import { crash } from './crash.game';
   imports: [GameEngineModule, MatchmakingModule, RealtimeModule, WalletModule],
   controllers: [CrashController],
   providers: [CrashService, RoundLeaderService],
-  exports: [CrashService],
+  exports: [CrashService, RoundLeaderService],
 })
 export class CrashModule implements OnModuleInit {
   constructor(private readonly registry: GameRegistry) {}

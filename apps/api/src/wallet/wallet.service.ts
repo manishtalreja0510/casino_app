@@ -380,6 +380,156 @@ export class WalletService {
   }
 
   /**
+   * Moves a buy-in from a player's wallet into a **table** escrow (ADR-025).
+   *
+   * The difference from `buyIn` is what the money is for: a match escrow is emptied by
+   * that match's settlement, while a table escrow holds chips across every hand played
+   * there and is emptied when the player stands up. Idempotent per seat session, so a
+   * retried sit-down seats the player once and charges once.
+   */
+  async sitDown(
+    input: {
+      userId: string;
+      tableId: string;
+      seatSessionId: string;
+      amount: number;
+      currency?: string;
+    },
+    /**
+     * Join the caller's transaction, so seating and paying commit together.
+     *
+     * A seat without a buy-in is a player at the table with money they never paid; a
+     * buy-in without a seat is money taken for a chair they never got. Neither is
+     * recoverable by a retry, so they share one transaction.
+     */
+    existingClient?: PoolClient,
+  ): Promise<{ transactionId: string; replayed: boolean }> {
+    const currency = input.currency ?? TEST_CURRENCY;
+    if (!Number.isSafeInteger(input.amount) || input.amount <= 0) throw new CurrencyMismatchError();
+
+    const work = async (client: PoolClient) => {
+      {
+        const userAccount = await this.repository.ensureUserAccount(client, input.userId, currency);
+        const escrow = await this.repository.ensureTableAccount(client, input.tableId, currency);
+
+        return this.ledger.post(
+          {
+            type: 'buy_in',
+            idempotencyKey: `table_buy_in:${input.seatSessionId}`,
+            refType: 'table',
+            refId: input.tableId,
+            entries: [
+              { accountId: userAccount.id, amount: -input.amount, currency },
+              { accountId: escrow.id, amount: input.amount, currency },
+            ],
+            audit: { actorType: 'user', actorId: input.userId, action: 'wallet.table_buy_in' },
+          },
+          client,
+        );
+      }
+    };
+
+    try {
+      return existingClient ? await work(existingClient) : await withTransaction(this.pool, work);
+    } catch (error) {
+      if (WalletService.isInsufficientFunds(error)) throw new InsufficientFundsError();
+      throw error;
+    }
+  }
+
+  /**
+   * Returns a stack from the table escrow to its owner's wallet.
+   *
+   * Idempotent per seat session: standing up twice — a retry, a double tap, a reconnect
+   * racing a timeout — pays out once. The amount comes from the caller because the stack
+   * is game state, and the caller is the only thing that knows the hand has finished.
+   */
+  async standUp(
+    input: {
+      userId: string;
+      tableId: string;
+      seatSessionId: string;
+      amount: number;
+      currency?: string;
+    },
+    /** Join the caller's transaction, so leaving the seat and being paid commit together. */
+    existingClient?: PoolClient,
+  ): Promise<{ transactionId: string | null; replayed: boolean }> {
+    const currency = input.currency ?? TEST_CURRENCY;
+    if (!Number.isSafeInteger(input.amount) || input.amount < 0) throw new CurrencyMismatchError();
+
+    // Standing up with nothing left is an ordinary outcome — you lost it all. There is no
+    // transaction to write, and writing one of zero-value entries is what the ledger
+    // rightly refuses.
+    if (input.amount === 0) return { transactionId: null, replayed: false };
+
+    const work = async (client: PoolClient) => {
+      const userAccount = await this.repository.ensureUserAccount(client, input.userId, currency);
+      const escrow = await this.repository.ensureTableAccount(client, input.tableId, currency);
+
+      return this.ledger.post(
+        {
+          type: 'settlement',
+          idempotencyKey: `table_cash_out:${input.seatSessionId}`,
+          refType: 'table',
+          refId: input.tableId,
+          entries: [
+            { accountId: escrow.id, amount: -input.amount, currency },
+            { accountId: userAccount.id, amount: input.amount, currency },
+          ],
+          audit: { actorType: 'user', actorId: input.userId, action: 'wallet.table_cash_out' },
+        },
+        client,
+      );
+    };
+
+    return existingClient ? work(existingClient) : withTransaction(this.pool, work);
+  }
+
+  /**
+   * Settles one hand at a table: **rake only** (ADR-025).
+   *
+   * Everything else about a poker hand — who won which pot, how the stacks changed — is
+   * game state inside an escrow that already holds the chips, so there is nothing for the
+   * ledger to do. Idempotent by match id like every other settlement, so a retry after a
+   * crash takes the rake once.
+   */
+  async settleTableHand(input: {
+    tableId: string;
+    matchId: string;
+    rake: number;
+    currency?: string;
+  }): Promise<{ transactionId: string | null; replayed: boolean }> {
+    const currency = input.currency ?? TEST_CURRENCY;
+    if (!Number.isSafeInteger(input.rake) || input.rake < 0) {
+      throw new Error(`match ${input.matchId} asked for a non-integer rake`);
+    }
+
+    // Zero rake is the normal case on `TST`, and the whole hand then moves no money at all.
+    if (input.rake === 0) return { transactionId: null, replayed: false };
+
+    return withTransaction(this.pool, async (client) => {
+      const escrow = await this.repository.ensureTableAccount(client, input.tableId, currency);
+      const rakeAccount = await this.repository.ensureHouseAccount(client, 'rake', currency);
+
+      return this.ledger.post(
+        {
+          type: 'rake',
+          idempotencyKey: `settlement:${input.matchId}`,
+          refType: 'match',
+          refId: input.matchId,
+          entries: [
+            { accountId: escrow.id, amount: -input.rake, currency },
+            { accountId: rakeAccount.id, amount: input.rake, currency },
+          ],
+          audit: { actorType: 'system', action: 'wallet.rake' },
+        },
+        client,
+      );
+    });
+  }
+
+  /**
    * Reverses a transaction by posting its mirror image (rule 5: corrections are never edits).
    */
   async reverse(input: {

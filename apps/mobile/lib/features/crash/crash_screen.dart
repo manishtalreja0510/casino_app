@@ -148,7 +148,7 @@ class _BetBoard extends StatelessWidget {
                   child: Text(
                     // No display names in a public board: the roster is not a place to
                     // leak who plays with whom (rule 15).
-                    'Player ${bet.userId.substring(0, 4)}',
+                    playerLabel(bet.userId),
                     style: t.text.bodySmall.copyWith(color: t.colors.textSecondary),
                   ),
                 ),

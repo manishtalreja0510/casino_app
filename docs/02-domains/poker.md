@@ -1,5 +1,14 @@
 # Domain: Poker
 
+> **Status: built (P9). OQ-07 is decided — No-Limit Texas Hold'em, cash tables, 2–6 seats.**
+> This document was written in P0 and was detailed enough to implement from; it has been
+> reconciled to what was actually built. Where the two differ, the difference is marked
+> **as built** and the reason given — the spec was right about shape and wrong about a
+> couple of details, and a doc that quietly keeps the wrong version is worse than no doc.
+>
+> Money works as §5 predicted, and the mechanism now has an ADR: **ADR-025**
+> (table-scoped escrow, table-banked settlement).
+
 NestJS module `games/poker` — a `GameDefinition` plugin plus table/seat management on the matchmaking rails. Built in **P9** (highest-complexity phase). Variant per **OQ-07 recommendation: No-Limit Texas Hold'em cash tables** (recommendation, not decision — table/seat/hand architecture below is variant-agnostic where cheap; NLHE specifics are marked). Tournaments, other variants: out of scope (§15).
 
 Related: `docs/02-domains/game-engine.md` (contract, recovery, invariants), `docs/02-domains/matchmaking.md` (table directory, seat reservation), `docs/02-domains/wallet.md` (escrow), `docs/02-domains/fraud-risk.md` (collusion detection — this doc only exports data, §14).
@@ -40,6 +49,14 @@ waiting_deal → blinds → dealing → bet_preflop → deal_flop → bet_flop
 ```
 
 - `init(ctx, players, config)`: seats/stacks snapshot ("stacks as of hand start" — the void-restore point, §10), button position, deck = Fisher–Yates shuffle over `ctx.rng` (draws audit-logged; commit-reveal not used for poker v1 — hole-card secrecy, not pre-commitment, is the fairness surface; revisit only via ADR).
+
+  **As built.** The table hands the seats over in deal order (the button's left first, the
+  button last) with each player's seat number and stack in `GamePlayer.meta`, and the
+  button's index in the hand config. Two consequences worth stating because they are easy
+  to get subtly wrong: the blinds land by position in that order, and the odd chip of a
+  split pot goes to the first player left of the button — computed from the button's
+  position inside the reducer rather than from whatever order the caller supplied, so a
+  caller that ordered its seats differently cannot silently move the money.
 - `reduce` actions: `postBlind` (engine-driven small/big blind; missed-blind rules §9), `fold`, `check`, `call`, `bet`, `raise`, `allIn`, `show`, `muck`. Every action validated: actor is the to-act seat, amount legal (§6), state legal. Illegal → rejected event, no state change (engine invariant 12.1/13).
 - Street transitions and board dealing are engine-actor events produced by `reduce` when a betting round closes (all active players matched or all-in).
 - `onTimeout`: turn timer → timebank consumption → auto-action (§8); disconnect grace timers (§9).
@@ -76,6 +93,15 @@ Poker refines the canonical per-match escrow (`../00-project/system-rules.md` ru
 Hand evaluation: standard 7-card NLHE evaluator, exhaustively tested against known vectors (P9 test plan).
 
 ## 7. Information hiding (`playerView`)
+
+> **As built.** This section describes the game's side of the guarantee, and it holds. The
+> *transport* side needed work that did not exist when this was written: `onlyTo` was
+> declared in the contract and consumed by nothing, and implementing it naively would have
+> leaked on **resume**, because the realtime replay buffer is per room. Private events are
+> now routed to their owner's own room rather than filtered inside a shared one
+> (ADR-023 §4b), and `hidden-info.int-spec.ts` reconnects and asks for everything from
+> sequence zero to prove it. That was the blocker this phase had to clear before a single
+> card was dealt.
 
 - Hole cards appear **only** in the owner's view — enforced at the contract level (rule 2), verified by the conformance suite's leak tests (engine §13) plus poker-specific adversarial tests.
 - Deck, undealt cards, and burn order appear in **no** view, ever.
@@ -142,4 +168,5 @@ Hands/hour per table, occupancy, void rate, auto-action (timeout/disconnect) rat
 
 ## 18. Phase mapping
 
-**P9** everything above on test currency; **P7** rails consumed (tables/seats); **P10** collusion detection consumes §14; **P12** table ops in admin (live view, kill, void oversight); **P14** full-table load + mid-hand chaos drills (acceptance: 6-player real-device hand survives mid-hand server kill); **P18** RNG certification covers the shuffle (ADR-016), real-currency rake config per license.
+**P9 — done** (see `docs/phases/PHASE-09-poker.md` for what landed, what was deferred, and
+why). Everything above on test currency; **P7** rails consumed (tables/seats); **P10** collusion detection consumes §14; **P12** table ops in admin (live view, kill, void oversight); **P14** full-table load + mid-hand chaos drills (acceptance: 6-player real-device hand survives mid-hand server kill); **P18** RNG certification covers the shuffle (ADR-016), real-currency rake config per license.

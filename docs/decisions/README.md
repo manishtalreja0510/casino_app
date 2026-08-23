@@ -72,3 +72,4 @@ Relative paths to related docs, ADR-nnn, OQ-nn, phases P-nn.
 | [ADR-022](ADR-022-interim-direct-credit-funding.md) | Interim direct-credit funding (no PSP during development) | ACCEPTED (interim, superseded at P17) |
 | [ADR-023](ADR-023-open-roster-round-based-matches.md) | Open-roster, round-based matches (+ replayable clock, `pendingTimer`, `publicView`) | ACCEPTED |
 | [ADR-024](ADR-024-house-banked-settlement.md) | House-banked settlement | ACCEPTED |
+| [ADR-025](ADR-025-table-scoped-escrow.md) | Table-scoped escrow & table-banked settlement (poker) | ACCEPTED |

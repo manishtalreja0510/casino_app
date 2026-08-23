@@ -8,6 +8,7 @@ Widget wrap(Widget child) => MaterialApp(
     );
 
 void main() {
+  _playerLabelTests();
   group('AppButton', () {
     testWidgets('invokes onPressed when enabled', (tester) async {
       var taps = 0;
@@ -172,6 +173,22 @@ void main() {
       expect(find.text('1.00x'), findsOneWidget);
       expect(find.text('1.02x'), findsOneWidget);
       expect(find.text('1.03x'), findsNothing);
+    });
+  });
+}
+
+void _playerLabelTests() {
+  group('playerLabel', () {
+    test('shortens a user id to a stable, meaningless prefix', () {
+      expect(playerLabel('01a03073-6cdf-7d91-aa45-b32df4080235'), 'Player 01a0');
+    });
+
+    test('does not throw on an id shorter than the prefix', () {
+      // The bug this exists to prevent: `substring(0, 4)` on a three-character id took the
+      // whole table screen down.
+      expect(playerLabel('bob'), 'Player bob');
+      expect(playerLabel('a'), 'Player a');
+      expect(playerLabel(''), 'Player');
     });
   });
 }

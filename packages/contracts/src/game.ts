@@ -37,7 +37,7 @@ export type GameMode = 'matchmade' | 'rounds';
  * difference is drawn from the house float. The engine routes settlement on this field;
  * it never branches on a game's code.
  */
-export type GameBanking = 'pooled' | 'house';
+export type GameBanking = 'pooled' | 'house' | 'table';
 
 export interface GameMeta {
   /** Stable identifier, e.g. `coin-duel`. Used in kill-switch keys and match records. */
@@ -169,4 +169,14 @@ export interface GameDefinition<TState = unknown> {
 
   /** Payouts for a terminal match. Games never touch wallets themselves (rule 10). */
   settle(ctx: GameContext, state: TState): readonly SettlementInstruction[];
+
+  /**
+   * For `banking: 'table'` games: how much leaves the table for the house on this match.
+   *
+   * The only ledger movement a table-banked match makes. Everything else — who won which
+   * pot, how the stacks changed — is game state sitting inside an escrow that already
+   * holds it, so there is nothing for the ledger to do. Required for table-banked games
+   * and ignored for the others; the conformance suite enforces that.
+   */
+  rakeFor?(ctx: GameContext, state: TState): number;
 }
