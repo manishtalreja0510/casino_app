@@ -112,4 +112,4 @@ Scheduled `fetchStatement` import → match every statement line to a `payments`
 
 - **P17** scope/acceptance: `../MASTER_ROADMAP.md`. Depends on P15 (OQ-02 decided, contracts signed), P16 (KYC gates live).
 - OQs touched: **OQ-01** (limits, AML thresholds, permitted methods), **OQ-02** (vendor + port validation), **OQ-08** (currencies/rails; crypto not recommended pre-license), **OQ-06** (webhook secrets).
-- Candidate OQ: chargeback-shortfall accounting (`chargeback_loss` account) and dispute-evidence tooling depth — finalize in P17 planning; noted for consistency pass.
+- **OQ-14**: chargeback-shortfall accounting (`chargeback_loss` account) and dispute-evidence tooling depth — finalize in P17 planning (`../00-project/open-questions.md`).

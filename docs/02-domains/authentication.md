@@ -100,4 +100,4 @@ Every login/session records IP-geo (country, region, ASN, VPN/proxy heuristic sc
 - **P3:** everything above except enforcement of geo (scaffold only) and player 2FA (deferred; admin TOTP is P12).
 - Post-P15: geo enforcement (P18), KYC-gated states interplay (P16).
 - OQs touched: **OQ-01** (geo enforcement policy), **OQ-12** (attestation snapshot as risk signal, never gate).
-- Candidate OQ: player-facing 2FA (TOTP/passkeys) timing and whether withdrawal ops should require step-up auth — recommend deciding by P17 planning; noted for consistency pass.
+- **OQ-13**: player-facing 2FA (TOTP/passkeys) timing and whether withdrawal ops should require step-up auth — recommend deciding by P17 planning (`../00-project/open-questions.md`).

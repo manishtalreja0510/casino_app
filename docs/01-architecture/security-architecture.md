@@ -82,6 +82,7 @@ Append-only, hash-chained `audit.audit_log` (`database-architecture.md §6`) rec
 
 | Doc | Covers |
 |---|---|
+| `threat-model.md` | STRIDE threat catalog per trust boundary, compromised-client scenarios, top-10 ranked risks |
 | `authentication-security.md` | token model, refresh rotation/reuse detection, device binding, request signing, WS tickets, session mgmt |
 | `network-security.md` | TLS, SPKI pinning + rotation, WAF/edge, origin isolation, rate limiting, update-channel transport security |
 | `mobile-app-hardening.md` | obfuscation, root/emulator/hook detection, signature self-check, Play Integrity (OQ-12), signal reporting |

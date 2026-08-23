@@ -91,7 +91,7 @@ Migration policy detail: `database-architecture.md §8`.
 ## 7. Error model
 
 - Domain code throws **typed domain errors** (`InsufficientFundsError`, `MatchNotJoinableError`, …), each mapped to a stable contract error code defined in `packages/contracts` (single registry, shared with the Flutter client).
-- A global exception filter converts to the JSON error envelope (`docs/03-api/api-conventions.md`): `{ code, message, details?, traceId }`. Unknown exceptions → `INTERNAL` with no internals leaked; full detail goes to logs/Sentry keyed by `traceId`.
+- A global exception filter converts to the JSON error envelope (`docs/03-api/api-conventions.md`): `{ error: { code, message, details?, traceId } }`. Unknown exceptions → `INTERNAL` with no internals leaked; full detail goes to logs/Sentry keyed by `traceId`.
 - WS errors use the same code registry inside the versioned event envelope.
 - Error messages are developer/user-safe by construction: no SQL, no stack, no PII (rule 15).
 

@@ -88,6 +88,16 @@ FCM works on sideloaded apps **only when Google Play services is present** — t
 ## OQ-12 — Play Integrity API adoption 🟢
 **Status:** OPEN — recommendation made. Play Integrity works for sideloaded apps on Play-services devices (verdicts: device integrity yes; `MEETS_DEVICE_INTEGRITY` achievable; app-identity verdict will report "unrecognized app" since we're off-Play — that field is ignored, not trusted). On de-Googled devices it's unavailable. **Recommendation:** use as ONE weighted risk signal into the risk engine (P10), never a hard gate; fallback = the rest of the hardening signal set (`docs/04-security/mobile-app-hardening.md`).
 
+## OQ-13 — Player-facing 2FA & step-up auth for withdrawals 🟢
+**Status:** OPEN · **Blocks:** parts of P17 planning · Raised by `../02-domains/authentication.md` §13
+
+When to introduce player-facing 2FA (TOTP and/or passkeys — admin TOTP is already mandatory at P12), and whether withdrawal operations should require step-up authentication regardless of session state. **Recommendation:** decide by P17 planning, alongside withdrawal-flow design; the auth model (device binding + request signing) already covers the transport, so this is a UX/risk-policy choice, not an architecture change.
+
+## OQ-14 — Chargeback-shortfall accounting & dispute tooling depth 🟢
+**Status:** OPEN · **Blocks:** parts of P17 planning · Raised by `../02-domains/payments.md` §11
+
+How chargeback shortfalls are accounted (dedicated `chargeback_loss` house account is the sketched approach) and how deep dispute-evidence tooling goes (evidence capture, PSP dispute API integration vs manual). **Recommendation:** finalize in P17 planning once the PSP (OQ-02) and its dispute model are known; the ledger design already supports it via reversal transactions + a house account.
+
 ---
 
 ## Process

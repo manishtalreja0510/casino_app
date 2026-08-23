@@ -15,13 +15,13 @@ Each NestJS module owns one PG schema; a module touches only its own schema (rul
 
 | Schema | Owner module | Representative tables |
 |---|---|---|
-| `auth` | auth | `credentials`, `refresh_token_families`, `device_keys`, `ws_tickets` |
+| `auth` | auth | `credentials`, `refresh_tokens` (family-grouped) — WS tickets & signing nonces are **Redis-only**, never PG (`../02-domains/authentication.md §1`, rule §1) |
 | `users` | users | `users`, `account_states` |
 | `kyc` | kyc | `verifications`, `kyc_levels` |
 | `wallet` | wallet | `accounts`, `ledger_transactions`, `ledger_entries`, `balances` |
 | `payments` | payments | `deposits`, `withdrawals`, `psp_events` |
-| `engine` | game-engine | `matches`, `game_events`, `game_snapshots`, `rng_draws` |
-| `game_sessions` | game-sessions | `participants` |
+| `engine` | game-engine | `game_events`, `game_snapshots`, `rng_draws` |
+| `game_sessions` | game-sessions | `matches` (lifecycle truth — `../02-domains/game-sessions.md`), `match_participants`, `match_outcomes` |
 | `matchmaking` | matchmaking | `match_formations` (audit trail) |
 | `risk` | risk | `signals`, `scores`, `review_cases` |
 | `rg` | responsible-gaming | `limits`, `exclusions` |
