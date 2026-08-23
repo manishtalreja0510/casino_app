@@ -97,6 +97,12 @@ class CasinoApiClient {
 
   // ---- wallet (P4) ----
 
+  /// Obtains a single-use WebSocket ticket (P5). Each connection needs a fresh one.
+  Future<String> realtimeTicket() async {
+    final json = await _post('/realtime/ticket', const {});
+    return json['ticket'] as String;
+  }
+
   Future<Money> balance() async {
     final json = await _get('/wallet/balance');
     return Money.fromJson(json['balance'] as Map<String, dynamic>);

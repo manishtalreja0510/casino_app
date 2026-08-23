@@ -1,4 +1,11 @@
-import { Global, Inject, Logger, Module, type OnApplicationShutdown } from '@nestjs/common';
+import {
+  Global,
+  Inject,
+  Logger,
+  Module,
+  type OnApplicationBootstrap,
+  type OnApplicationShutdown,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 
@@ -28,13 +35,45 @@ export const REDIS = Symbol('REDIS');
   ],
   exports: [REDIS],
 })
-export class RedisModule implements OnApplicationShutdown {
+export class RedisModule implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly logger = new Logger(RedisModule.name);
+
+  /** How long boot waits for the connection before continuing in a degraded state. */
+  private static readonly readyTimeoutMs = 5_000;
 
   constructor(@Inject(REDIS) private readonly redis: Redis) {
     // An unhandled 'error' event on ioredis crashes the process; log and carry on,
     // because Redis being down must degrade the platform, not kill it.
     this.redis.on('error', (error: Error) => this.logger.warn(`redis: ${error.message}`));
+  }
+
+  /**
+   * Waits (briefly) for the connection before the app starts serving.
+   *
+   * The offline queue is disabled so that real traffic fails fast instead of hanging on a
+   * dead cache — but that also means commands issued in the first moments after boot are
+   * rejected outright while the socket is still connecting. Waiting here removes that
+   * window for every consumer, rather than making each one handle it.
+   *
+   * Bounded and non-fatal: if Redis is genuinely down the app still starts, degraded —
+   * flags fall back to PostgreSQL and readiness reports it (rule 7).
+   */
+  async onApplicationBootstrap(): Promise<void> {
+    if (this.redis.status === 'ready') return;
+
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        this.logger.warn(
+          `redis not ready within ${RedisModule.readyTimeoutMs}ms; starting in a degraded state`,
+        );
+        resolve();
+      }, RedisModule.readyTimeoutMs);
+
+      this.redis.once('ready', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
   }
 
   async onApplicationShutdown(): Promise<void> {
