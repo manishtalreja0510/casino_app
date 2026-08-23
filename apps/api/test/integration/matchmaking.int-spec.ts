@@ -227,9 +227,24 @@ describe('matchmaking (integration)', () => {
       const errors = results.filter((r) => r instanceof Error);
       expect(errors).toEqual([]);
 
-      const matchIds = new Set(
-        results.filter((r) => !(r instanceof Error) && r.matchId).map((r) => r.matchId as string),
+      // Read what actually happened from the database, NOT from who the calls told.
+      //
+      // `joinQueue` returns a match id only when the caller's own formation attempt seated
+      // the caller. Under a real race that is genuinely unpredictable: one player's attempt
+      // can claim two *other* queued players and form a match it is not in, so a match
+      // exists that no caller was told about. An earlier version of this test counted the
+      // returned ids and failed roughly one run in three — not because anything was wrong,
+      // but because it was asserting which caller happened to be informed rather than
+      // whether the seating and the money were right.
+      const { rows } = await pool.query<{ match_id: string; user_id: string }>(
+        `SELECT mp.match_id, mp.user_id
+           FROM game.match_players mp
+           JOIN game.matches m ON m.id = mp.match_id
+          WHERE mp.user_id = ANY($1::uuid[])`,
+        [players],
       );
+
+      const matchIds = new Set(rows.map((row) => row.match_id));
       expect(matchIds.size).toBe(2);
 
       const seatedBy = new Map<string, number>();

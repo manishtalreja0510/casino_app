@@ -1,6 +1,19 @@
 # Domain: Casino Game #1
 
-NestJS module `games/casino-game-1` — the first shipped `GameDefinition` plugin, built in **P8**. **Which game is undecided (OQ-05)**; the contract makes it structurally irrelevant (that is the point of ADR-009). This doc is therefore game-agnostic, with a **worked example shaped like Crash — the OQ-05 recommended candidate** — clearly labeled as such. If a different candidate is chosen, §9 bounds the blast radius.
+> **Status: built (P8). OQ-05 is decided — the game is Crash.** The published rules and the
+> fairness note live in `./crash-game-rules.md`; the module is `apps/api/src/games/crash/`.
+> This document stays **game-agnostic on purpose**: it is the template the next casino game
+> is built from, and §9's blast-radius claim is now an established fact rather than a
+> prediction — Crash touched the module, its rules doc and two `ui_kit` components, and
+> nothing else. What it did add to the platform, because the template predicted round-based
+> play but the engine had not yet met it: open-roster admission (ADR-023) and house-banked
+> settlement (ADR-024), both game-agnostic and both now used by the template rather than by
+> Crash specifically.
+
+NestJS module `games/crash` — the first shipped `GameDefinition` plugin, built in **P8**.
+The contract makes the *choice* structurally irrelevant (that is the point of ADR-009), so
+what follows is written for any candidate, with a worked example that is now the shipped
+game.
 
 Related: `docs/02-domains/game-engine.md` (contract, RNG, settlement), `docs/02-domains/matchmaking.md` (queue model / open-round join), `docs/02-domains/wallet.md` (house accounts, escrow), `docs/00-project/open-questions.md` (OQ-05).
 
@@ -18,6 +31,16 @@ All four OQ-05 candidates (Crash, Hi-Lo duel, wheel, Andar Bahar/Teen Patti) sat
 
 A "round" is one engine match; consecutive rounds are consecutive matches in a persistent round-room (players join/leave between rounds; matchmaking's queue model degenerates to "join the open betting window" for round-based games — the formation transaction escrows each accepted bet).
 
+**What P8 changed about this template, having built it.** The prediction above was right about
+shape and wrong about one detail worth correcting, because the correction is the cleaner
+design: **a bet is not a `reduce` action.** The betting window is the match's `created`
+status, not a phase inside game state, and a bet is `EngineService.joinMatch` — a seat plus
+a buy-in in one transaction (ADR-023). Game state does not exist until the round lifts off,
+which means the reducer never has to model "money that might not be there yet", and the
+escrow-vs-roster invariant is the engine's rather than each game's. Round-level limits are
+enforced by a `guard` the engine runs *inside* that transaction, since a cap checked before
+it is a race two simultaneous bets both win. The mapping below is written as built.
+
 ```
 open (betting window, T_open) → locked (no more bets) → resolving (RNG draw + outcome)
    → settling → settled → [next round: new match]
@@ -25,9 +48,12 @@ open (betting window, T_open) → locked (no more bets) → resolving (RNG draw 
 
 | Contract hook | Role |
 |---|---|
-| `init` | round config, empty bet book, opens betting window timer; pre-commit hash if provably fair (§5) |
-| `reduce` | `placeBet` (validated: window open, min/max, per-user exposure cap, funds escrowed by the join transaction), `cancelBet` (window-open only → escrow refund instruction at settle… v1: cancel simply voids the bet and refunds at settlement), game-specific live actions (Crash: `cashOut`) |
-| `onTimeout` | window close (`open→locked`), resolution tick(s) |
+| *(before `init`)* | the round orchestrator opens an empty match, commits to the outcome (`sha256(seed)`), and takes bets via `joinMatch` for the length of the window |
+| `init` | runs at lift-off, with the roster already paid: derives the outcome from the committed seed and records the start time |
+| `pendingTimer` | the round's own deadline — armed at lift-off and re-armed after a restart with the flight time remaining (ADR-023) |
+| `reduce` | live actions only (Crash: `cashout`), priced against the recorded clock |
+| `onTimeout` | the resolution: the round ends and any auto-behaviours are applied |
+| `publicView` | what the shared `round:{tierId}` room may see — never the unrevealed seed |
 | `playerView` | public round state + caller's own bets; other players' bets/cash-outs are public by design in social games (no hidden info except unrevealed server seed) |
 | `isTerminal` | outcome fixed and all live actions closed |
 | `settle` | per-bet instructions: escrow → winners, escrow → `house_main` (lost stakes), house exposure per §3; idempotent by round matchId; escrow zeroes out |
@@ -46,7 +72,15 @@ Timers are server-side (P5 framework); resolution uses `ctx.rng` with audit-logg
 
 **Bets stand; resolution is server-side.** A disconnected player's bet resolves exactly as a connected one's; auto-behaviors are game-config (Crash: optional pre-set auto-cash-out multiplier honored server-side; without it, a Crash bet rides to the crash and loses — stated in game rules UI). Reconnect = standard resume (replay window or `playerView` resync). No refunds for disconnection (abuse vector otherwise); voids only via the engine's unrecoverable-round path (void+refund all bets, audited).
 
-## 5. Worked example — Crash-shaped (OQ-05 **recommended candidate**, not decided)
+## 5. Worked example — Crash (OQ-05 **decided**; shipped in P8)
+
+> Published rules, the exact formulas and the fairness note: **`./crash-game-rules.md`**.
+> The summary below is the design; that document is the contract with players.
+>
+> Two v1 simplifications worth naming here: the seed is committed **per round**, not chained
+> across a series (a chain proves the series was fixed in advance too — worth doing, not
+> worth blocking on), and a bet cannot be cancelled once placed, because the stake is
+> escrowed the moment it is accepted.
 
 - **Round:** betting window (~7s) → multiplier curve rises from 1.00× → server-drawn crash point ends it. Players `cashOut` any time before crash to lock stake × current multiplier; crash before cash-out = stake lost to house. House-banked; exposure cap limits simultaneous ride-alongs.
 - **Provably-fair commit-reveal (engine §8 helper):**
@@ -57,9 +91,16 @@ Timers are server-side (P5 framework); resolution uses `ctx.rng` with audit-logg
 - **`cashOut` ordering:** server timestamps/sequences cash-outs against the authoritative curve (client-displayed multiplier is cosmetic); a cash-out action arriving after the crash event is a losing ride, full stop — latency is a disclosed property of the game, and the curve timing is identical for all players in the round (no per-player advantage; this is the standard Crash model).
 - **Curve/payout config:** crash-point distribution = payout curve config (house edge %, instant-crash probability, max multiplier cap); multiplier-vs-time function fixed in game rules.
 
-## 6. Config schema (validated by engine against `meta.stakeConfigSchema`)
+## 6. Config schema
 
-`{ roundTiming: {openMs, interRoundMs, maxRoundMs}, bet: {min, max, perUserMax, currency}, exposure: {maxRoundStake, maxHouseExposure, houseFloor}, payout: {curve|table params, houseEdge}, provablyFair: {enabled, chainLength}, disconnect: {autoCashOutAllowed} }` — per environment; `TST` values in dev/staging; real-currency values are a P18 concern.
+**As built (P8):** per *stake tier* rather than per environment — `game.stake_tiers.config`,
+validated by the game module's own zod schema and copied into the match's config when the
+round opens, so a round settles under the configuration it started with even if the tier is
+retuned mid-flight. A tier whose config will not parse degrades to **free play**, loudly
+logged: guessing limits for real stakes is the one thing it must not do.
+
+`{ betMin, betMax, maxRoundStake, maxHouseExposure, bettingWindowMs, interRoundMs, houseEdgeBps, maxMultiplierX100 }`
+— `TST` values today (`0007_crash.sql`); real-currency values are a P18 concern.
 
 ## 7. UI components (from `ui_kit` — rule 25)
 
@@ -79,4 +120,4 @@ Rounds/hour, players per round, bet volume, house PnL per round + cumulative (dr
 
 ## 11. Phase mapping
 
-**P8** module + config + UI + kill-switch wiring + game rules/fairness doc, on `TST` (acceptance: N concurrent players complete rounds with correct idempotent settlement; kill-switch drains gracefully); **P10** bet-velocity + pattern signals to risk; **P14** settlement-burst and reconnect-storm load; **P18** RNG certification + real-currency config; **P19** visual polish of the game screen (restyle only).
+**P8 — done.** Module + config + UI + kill-switch wiring + game rules/fairness doc, on `TST` (acceptance: N concurrent players complete rounds with correct idempotent settlement; kill-switch drains gracefully); **P10** bet-velocity + pattern signals to risk; **P14** settlement-burst and reconnect-storm load; **P18** RNG certification + real-currency config; **P19** visual polish of the game screen (restyle only).

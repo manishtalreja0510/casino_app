@@ -278,10 +278,16 @@ export class RealtimeGateway
     // active-match counts, nothing player-specific.
     if (room.startsWith('lobby:')) return true;
 
+    // Round rooms (P8) are public in the same sense: a Crash round is a shared spectacle,
+    // and its room carries only what `publicView` allows — bets and cash-outs, which are
+    // public by design in a social game, never an unrevealed seed and never one player's
+    // private state. Anything player-specific still travels on `user:{id}`.
+    if (room.startsWith('round:')) return true;
+
     return false;
   }
 
   private static isWellFormedRoom(room: string): boolean {
-    return /^(user|match|lobby):[A-Za-z0-9:_-]{1,64}$/.test(room);
+    return /^(user|match|lobby|round):[A-Za-z0-9:_-]{1,64}$/.test(room);
   }
 }

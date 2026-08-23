@@ -17,8 +17,8 @@ Update this file in the same PR as any status change. BLOCKED entries must name 
 | P5 | Real-time core | COMPLETE | 2026-08-23 · `phases/PHASE-05-realtime-core.md` |
 | P6 | Game engine & contract | COMPLETE | 2026-08-23 · `phases/PHASE-06-game-engine.md` |
 | P7 | Matchmaking & lobby | COMPLETE | 2026-08-23 · `phases/PHASE-07-matchmaking-lobby.md` |
-| P8 | Casino game #1 (test currency) | NOT_STARTED | P7 complete; game choice = OQ-05 (rec: Crash) — needs your decision |
-| P9 | Poker (test currency) | NOT_STARTED | needs P7; variant = OQ-07 (rec: NLHE cash) |
+| P8 | Casino game #1 — Crash (test currency) | COMPLETE | 2026-08-23 · `phases/PHASE-08-casino-game-crash.md` · OQ-05 decided: Crash · ADR-023, ADR-024 |
+| P9 | Poker (test currency) | NOT_STARTED | P7/P8 complete; variant = OQ-07 (rec: NLHE cash) — needs a decision. **Blocker to clear first:** the realtime replay buffer is room-wide, so a resume could deliver another player's events (PHASE-05 §24) — a hole-card leak in poker |
 | P10 | Risk & responsible gaming v1 | NOT_STARTED | needs P8 or P9 |
 | P11 | Notifications | NOT_STARTED | needs P5; transport = OQ-09 |
 | P12 | Admin panel v1 | NOT_STARTED | needs P4 (risk queues need P10) |
@@ -32,4 +32,4 @@ Update this file in the same PR as any status change. BLOCKED entries must name 
 | P20 | iOS | BLOCKED | OQ-04 (unscheduled) |
 
 ## Open-question status snapshot
-See `docs/00-project/open-questions.md` for detail. **Decided/handled:** OQ-01 (delegated), OQ-02 (deferred; direct-credit interim), OQ-03 (deferred; L0 only), OQ-06 (AWS confirmed + local-first mandate). **Still open, none blocking current work:** OQ-04 (iOS), OQ-05 (casino game — needed by P8), OQ-07 (poker variant — needed by P9), OQ-08..OQ-14.
+See `docs/00-project/open-questions.md` for detail. **Decided/handled:** OQ-01 (delegated), OQ-02 (deferred; direct-credit interim), OQ-03 (deferred; L0 only), OQ-06 (AWS confirmed + local-first mandate). **Still open, none blocking current work:** OQ-04 (iOS), OQ-07 (poker variant — needed by P9), OQ-08..OQ-14. **Newly decided:** OQ-05 — **Crash**, taken by engineering on the standing recommendation and reversible at the cost of one game module plus two UI components (see the OQ entry).

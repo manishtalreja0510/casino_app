@@ -1,9 +1,11 @@
 import 'package:api_client/api_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:ui_kit/ui_kit.dart';
 
 import '../../app/providers.dart';
+import '../../app/router.dart';
 import '../wallet/wallet_providers.dart';
 import 'lobby_providers.dart';
 
@@ -64,6 +66,9 @@ class _GameCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = context.tokens;
+
+    // Subscribe to this game's lobby room so queue depths and match counts stay live.
+    ref.watch(lobbyLiveProvider(game.gameCode));
 
     return AppCard(
       child: Column(
@@ -132,20 +137,29 @@ class _TierRow extends ConsumerWidget {
             ],
           ),
         ),
-        if (tier.queueDepth > 0) ...[
+        if (game.mode == LobbyMode.matchmade && tier.queueDepth > 0) ...[
           Text(
             '${tier.queueDepth} waiting',
             style: t.text.bodySmall.copyWith(color: t.colors.textSecondary),
           ),
           SizedBox(width: t.space.sm),
         ],
-        AppButton(
-          label: _isQueuedHere ? 'Leave' : 'Join',
-          variant: _isQueuedHere ? AppButtonVariant.secondary : AppButtonVariant.primary,
-          onPressed: !game.enabled || blockedByOtherQueue
-              ? null
-              : () => _isQueuedHere ? _leave(context, ref) : _join(context, ref),
-        ),
+        // A round game has no queue to join: its betting window *is* the queue, so the
+        // lobby sends the player to the table (ADR-023). Decided from the mode the server
+        // reports, never from the game's name.
+        if (game.mode == LobbyMode.rounds)
+          AppButton(
+            label: 'Play',
+            onPressed: game.enabled ? () => context.push(AppRoutes.crash(tier.id)) : null,
+          )
+        else
+          AppButton(
+            label: _isQueuedHere ? 'Leave' : 'Join',
+            variant: _isQueuedHere ? AppButtonVariant.secondary : AppButtonVariant.primary,
+            onPressed: !game.enabled || blockedByOtherQueue
+                ? null
+                : () => _isQueuedHere ? _leave(context, ref) : _join(context, ref),
+          ),
       ],
     );
   }

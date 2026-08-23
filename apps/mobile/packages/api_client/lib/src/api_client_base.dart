@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import 'api_error.dart';
 import 'auth_models.dart';
+import 'crash_models.dart';
 import 'health.dart';
 import 'lobby_models.dart';
 import 'money.dart';
@@ -114,12 +115,40 @@ class CasinoApiClient {
     return QueueStatus.fromJson(json);
   }
 
-  Future<void> leaveQueue(String tierId) async => _delete('/lobby/queue?tierId=\$tierId');
+  Future<void> leaveQueue(String tierId) async => _delete('/lobby/queue?tierId=$tierId');
 
   /// Polls queue state. Also refreshes the server-side TTL, so a client that stops asking
   /// is dropped from the queue rather than blocking the tier.
   Future<QueueStatus> queueStatus(String tierId) async {
-    return QueueStatus.fromJson(await _get('/lobby/queue?tierId=\$tierId'));
+    return QueueStatus.fromJson(await _get('/lobby/queue?tierId=$tierId'));
+  }
+
+  // ---- crash (P8) ----
+
+  /// The current round for a tier. Between rounds this comes back with an empty
+  /// `matchId` and `phase: betting` — an honest "nothing is open", not an error.
+  Future<CrashRound> crashRound(String tierId) async {
+    return CrashRound.fromJson(await _get('/games/crash/rounds/$tierId'));
+  }
+
+  /// Places a bet in the open round. Bounds, caps and the betting window are the
+  /// server's to enforce; this call carries the intent and nothing else.
+  Future<CrashBetResult> placeCrashBet(
+    String tierId, {
+    required int amountMinorUnits,
+    int? autoCashOutX100,
+  }) async {
+    final json = await _post('/games/crash/rounds/$tierId/bets', {
+      'amount': amountMinorUnits,
+      if (autoCashOutX100 != null) 'autoCashOutX100': autoCashOutX100,
+    });
+    return CrashBetResult.fromJson(json);
+  }
+
+  /// Cashes out. Deliberately carries no multiplier: the server prices it from its own
+  /// clock, and a client-sent number would be a number an attacker chooses (rule 1).
+  Future<CrashCashOut> crashCashOut(String matchId) async {
+    return CrashCashOut.fromJson(await _post('/games/crash/rounds/$matchId/cash-out', const {}));
   }
 
   /// Obtains a single-use WebSocket ticket (P5). Each connection needs a fresh one.
@@ -154,7 +183,7 @@ class CasinoApiClient {
   }
 
   Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body) async {
-    final uri = Uri.parse('\$baseUrl\$path');
+    final uri = Uri.parse('$baseUrl$path');
     late final http.Response response;
     try {
       response = await _http
@@ -169,7 +198,7 @@ class CasinoApiClient {
   }
 
   Future<Map<String, dynamic>> _delete(String path) async {
-    final uri = Uri.parse('\$baseUrl\$path');
+    final uri = Uri.parse('$baseUrl$path');
     late final http.Response response;
     try {
       response = await _http.delete(uri, headers: await _headers()).timeout(timeout);

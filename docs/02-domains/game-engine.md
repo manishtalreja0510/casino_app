@@ -1,5 +1,24 @@
 # Domain: Game Engine
 
+> **P8 additions (ADR-023).** The engine gained a second admission model and the two hooks
+> a self-driven game needs. All are additive; matchmade games are unchanged.
+>
+> - `createOpenMatch` / `joinMatch` / `startMatch` — an open roster with **per-player**
+>   atomic buy-in, alongside `createMatch`'s all-or-nothing formation. `joinMatch` takes an
+>   optional `guard` the engine runs inside the lock, for limits that depend on who has
+>   already joined.
+> - **The clock is recorded like an RNG draw.** `GameContext.now()` was documented as
+>   replayable and implemented as `Date.now()`; nothing noticed because the reference game
+>   never asks the time. `ClockService` records reads with the event that consumed them and
+>   replays them in order, so a time-dependent game replays as the match that was played.
+> - `pendingTimer(ctx, state)` — the deadline the current state calls for, armed after
+>   `init` and after recovery. Without it a resumed round sits in flight forever.
+> - `publicView(ctx, state)` — the only state a shared room may carry.
+> - `GameMeta.banking` routes settlement (ADR-024); `GameMeta.mode` routes admission;
+>   `GamePlayer.meta` carries per-player data fixed at join time.
+> - `onMatchChanged` — an in-process listener so a round owner can publish lifecycle events.
+>   Presentation only; it never carries money, and anything durable reads PostgreSQL.
+
 NestJS module `game-engine` — the contract runtime that hosts every game (ADR-006, ADR-009). Games are plugins implementing `GameDefinition`; the engine owns lifecycle, action processing, persistence, timers, RNG, recovery, and settlement. Built in **P6**, validated by the dev-only "coin-duel" reference game before any shipped game (P8/P9) exists.
 
 Related: `docs/02-domains/game-sessions.md` (match records / DB truth), `docs/02-domains/matchmaking.md` (how matches form), `docs/02-domains/wallet.md` (escrow/settlement services), `docs/01-architecture/realtime-architecture.md` (transport). Undecided items: none engine-blocking; RNG certification lab is OQ-01-dependent (ADR-016 PROPOSED).

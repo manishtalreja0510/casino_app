@@ -24,6 +24,16 @@ export class TierUnavailableError extends DomainError {
   }
 }
 
+export class NotAQueuedGameError extends DomainError {
+  constructor(gameCode: string) {
+    super(
+      ErrorCode.GAME_INVALID_ACTION,
+      `${gameCode} runs continuous rounds — join the round instead of queueing`,
+      409,
+    );
+  }
+}
+
 export class InsufficientBalanceForTierError extends DomainError {
   constructor() {
     super(ErrorCode.WALLET_INSUFFICIENT_FUNDS, 'Not enough funds for this stake', 409);
@@ -54,6 +64,11 @@ export class MatchmakingService {
 
   async joinQueue(userId: string, tierId: string): Promise<{ queued: boolean; matchId?: string }> {
     const tier = await this.requirePlayableTier(tierId);
+
+    // Round games have no queue: their "queue" is the open betting window (ADR-023).
+    // Refused explicitly rather than silently enqueueing someone into a tier no formation
+    // will ever read.
+    if (this.modeOf(tier.gameCode) === 'rounds') throw new NotAQueuedGameError(tier.gameCode);
 
     // Refused before queueing, not discovered during formation — a player who cannot
     // afford the tier must never be the reason someone else's match falls apart.
@@ -186,6 +201,7 @@ export class MatchmakingService {
     const tiers = await this.repository.listTiers();
     let formed = 0;
     for (const tier of tiers) {
+      if (this.modeOf(tier.gameCode) !== 'matchmade') continue;
       const enabled = await this.flags.isEnabled(gameEnabledKey(tier.gameCode));
       if (!enabled) continue;
       if ((await this.tryForm(tier)) !== null) formed++;
@@ -193,11 +209,25 @@ export class MatchmakingService {
     return formed;
   }
 
+  /**
+   * How a game admits players. Unknown games are treated as matchmade — the model that
+   * existed before ADR-023 and the one every registered game defaults to.
+   */
+  private modeOf(gameCode: string): 'matchmade' | 'rounds' {
+    try {
+      return this.registry.latest(gameCode).meta.mode ?? 'matchmade';
+    } catch {
+      return 'matchmade';
+    }
+  }
+
   async lobby(): Promise<{
     games: Array<{
       gameCode: string;
       name: string;
       enabled: boolean;
+      /** How to enter: queue for a match, or join the next round. */
+      mode: 'matchmade' | 'rounds';
       activeMatches: number;
       tiers: Array<{ id: string; name: string; stake: number; currency: string; queueDepth: number }>;
     }>;
@@ -234,7 +264,14 @@ export class MatchmakingService {
         // than crashing the lobby for everyone.
       }
 
-      games.push({ gameCode, name, enabled, activeMatches, tiers: withDepth });
+      games.push({
+        gameCode,
+        name,
+        enabled,
+        mode: this.modeOf(gameCode),
+        activeMatches,
+        tiers: withDepth,
+      });
     }
 
     return { games };

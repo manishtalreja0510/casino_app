@@ -70,3 +70,5 @@ Relative paths to related docs, ADR-nnn, OQ-nn, phases P-nn.
 | [ADR-020](ADR-020-data-access-layer.md) | Data access layer (Drizzle, SQL-first migrations) | ACCEPTED |
 | [ADR-021](ADR-021-local-first-development-environment.md) | Local-first, zero-cost development environment | ACCEPTED |
 | [ADR-022](ADR-022-interim-direct-credit-funding.md) | Interim direct-credit funding (no PSP during development) | ACCEPTED (interim, superseded at P17) |
+| [ADR-023](ADR-023-open-roster-round-based-matches.md) | Open-roster, round-based matches (+ replayable clock, `pendingTimer`, `publicView`) | ACCEPTED |
+| [ADR-024](ADR-024-house-banked-settlement.md) | House-banked settlement | ACCEPTED |

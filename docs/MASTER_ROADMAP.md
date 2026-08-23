@@ -53,7 +53,7 @@ Rules encoded in the ordering:
 | P5 | Real-time core | P3 | — | High | High |
 | P6 | Game engine & contract | P4, P5 | — | High | High |
 | P7 | Matchmaking & lobby | P6 | — | Medium | Medium |
-| P8 | Casino game #1 (test currency) | P7 | OQ-05 (content only) | Medium | Medium |
+| P8 | Casino game #1 — Crash (test currency) | P7 | — (OQ-05 decided) | Medium | Medium |
 | P9 | Poker (test currency) | P7 | OQ-07 (rec. exists) | High | Very high |
 | P10 | Risk & responsible gaming v1 | P8 or P9 | — | High | High |
 | P11 | Notifications | P5 | OQ-09 (rec. exists) | Low | Medium |
@@ -132,7 +132,7 @@ Rules encoded in the ordering:
 **Enables:** P8, P9.
 
 ## P8 — Casino game #1 (test currency)
-**Objective:** first shipped game through the contract (which game: OQ-05; recommendation Crash). **Why after P6/P7:** it's a content plug-in, proving the platform, not shaping it.
+**Objective:** first shipped game through the contract. **OQ-05 decided: Crash** (2026-08-23). **Why after P6/P7:** it's a content plug-in, proving the platform, not shaping it — which it did, while also exposing the two things the platform was missing for round-based play (ADR-023 open-roster admission, ADR-024 house-banked settlement) and one real bug (a non-replayable reducer clock).
 **Scope:** game module implementing `GameDefinition`; game-specific config (rounds, stakes) via engine config schema; full placeholder-UI game screen from ui_kit (incl. game-specific components added to ui_kit, e.g. multiplier curve/round widgets); disconnect policy config; game-specific settlement (house-banked accounts per `wallet.md`); per-game kill-switch wired; game rules doc + fairness note.
 **Out of scope:** visual polish, sound (P19); promotions.
 **Testing:** contract conformance suite + game-logic property tests (payout table exactness vs RNG stream), full e2e on devices.

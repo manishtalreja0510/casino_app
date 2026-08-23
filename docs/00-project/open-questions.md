@@ -55,8 +55,20 @@ There is no general sideloading path on iOS. Realistic options, none chosen:
 | App Store proper | Requires licensed operation in every storefront country offered + Apple gambling entitlements; realistic *only after* OQ-01 |
 **Recommendation:** defer; revisit after OQ-01 (App Store with license, or DMA web-distribution if EU-licensed). Nothing in the architecture is Android-exclusive except the hardening layer.
 
-## OQ-05 — Which casino-style game launches first 🟢 low structural impact
-**Status:** OPEN · **Blocks:** P8 content only (contract makes it structurally irrelevant)
+## OQ-05 — Which casino-style game launches first 🟢 DECIDED
+**Status:** DECIDED (2026-08-23) — **Crash** · **Was blocking:** P8 content only · **Shipped in:** P8, rules at `docs/02-domains/crash-game-rules.md`
+
+> **Decision (2026-08-23).** Crash, on the standing recommendation below. Taken by
+> engineering after the owner asked for P8 to proceed without naming a game; recorded here
+> so it can be reversed cheaply rather than assumed. **What a reversal would cost:** the
+> game module, its rules doc, and the two game-specific `ui_kit` components — the isolation
+> §9 of `casino-game.md` demands. What it would *not* touch: the engine, matchmaking,
+> escrow and settlement, provable-fairness plumbing, or the round-based admission model
+> (ADR-023), all of which are game-agnostic and now proven by a second game. If a different
+> candidate is wanted, say so and it is a phase of work, not a redesign.
+>
+> Crash also forced two genuinely useful things into the platform that a simpler candidate
+> would have deferred: a replayable clock (ADR-023) and house-banked settlement (ADR-024).
 
 Candidates (all multiplayer-capable, fast rounds, house-banked or pooled):
 | Candidate | Notes |

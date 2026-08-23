@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../features/auth/auth_controller.dart';
 import '../features/auth/auth_screen.dart';
 import '../features/auth/auth_state.dart';
+import '../features/crash/crash_screen.dart';
 import '../features/gallery/gallery_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/lobby/lobby_screen.dart';
@@ -21,6 +22,10 @@ class AppRoutes {
   static const String signIn = '/sign-in';
   static const String starting = '/starting';
   static const String lobby = '/play';
+
+  /// Round-based game table. The tier id is the address of the table, because a round
+  /// game has no match to navigate to until one exists.
+  static String crash(String tierId) => '/play/crash/$tierId';
   static const String wallet = '/wallet';
   static const String gallery = '/_dev/gallery';
 }
@@ -66,6 +71,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.lobby,
         name: 'lobby',
         builder: (context, state) => const LobbyScreen(),
+      ),
+      GoRoute(
+        path: '/play/crash/:tierId',
+        name: 'crash',
+        builder: (context, state) =>
+            CrashScreen(tierId: state.pathParameters['tierId'] ?? ''),
       ),
       GoRoute(
         path: AppRoutes.wallet,

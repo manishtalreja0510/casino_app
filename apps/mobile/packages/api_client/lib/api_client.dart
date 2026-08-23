@@ -8,6 +8,7 @@ library;
 export 'src/api_client_base.dart';
 export 'src/api_error.dart';
 export 'src/auth_models.dart';
+export 'src/crash_models.dart';
 export 'src/health.dart';
 export 'src/lobby_models.dart';
 export 'src/money.dart';

@@ -125,4 +125,53 @@ void main() {
       expect(find.text('winner'), findsOneWidget);
     });
   });
+
+  group('Multiplier display', () {
+    testWidgets('renders an integer x100 the way a player reads it', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          const AppMultiplierDisplay(
+            multiplierX100: 1234,
+            phase: MultiplierPhase.rising,
+            caption: 'In flight',
+          ),
+        ),
+      );
+
+      expect(find.text('12.34x'), findsOneWidget);
+      expect(find.text('In flight'), findsOneWidget);
+    });
+
+    testWidgets('colours by phase from tokens, never a literal', (tester) async {
+      for (final phase in MultiplierPhase.values) {
+        await tester.pumpWidget(wrap(AppMultiplierDisplay(multiplierX100: 100, phase: phase)));
+        await tester.pump();
+        expect(find.text('1.00x'), findsOneWidget);
+      }
+    });
+
+    testWidgets('outcome strip shows recent rounds, newest first, and nothing more',
+        (tester) async {
+      await tester.pumpWidget(wrap(const AppOutcomeStrip(outcomesX100: [431, 100, 1050])));
+
+      expect(find.text('4.31x'), findsOneWidget);
+      expect(find.text('1.00x'), findsOneWidget);
+      expect(find.text('10.50x'), findsOneWidget);
+    });
+
+    testWidgets('outcome strip says so when there is nothing to show', (tester) async {
+      await tester.pumpWidget(wrap(const AppOutcomeStrip(outcomesX100: [])));
+      expect(find.text('No rounds yet'), findsOneWidget);
+    });
+
+    testWidgets('outcome strip caps what it renders rather than growing without bound',
+        (tester) async {
+      final many = List<int>.generate(50, (i) => 100 + i);
+      await tester.pumpWidget(wrap(AppOutcomeStrip(outcomesX100: many, maxItems: 3)));
+
+      expect(find.text('1.00x'), findsOneWidget);
+      expect(find.text('1.02x'), findsOneWidget);
+      expect(find.text('1.03x'), findsNothing);
+    });
+  });
 }

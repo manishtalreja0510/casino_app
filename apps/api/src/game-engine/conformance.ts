@@ -20,6 +20,21 @@ export interface ConformanceScenario {
   script: Array<{ type: string; userId: string; payload?: Record<string, unknown> }>;
   /** Keys of `playerView` output that must never appear for a non-owner. */
   secretViewKeys?: string[];
+  /**
+   * Clock reads handed to the reducer, in order, then held at the last value.
+   *
+   * A game whose outcome depends on elapsed time cannot be scripted with a frozen clock —
+   * every cash-out would be priced at lift-off. Supplied per scenario and reused
+   * identically across runs, so the determinism check still means what it says.
+   */
+  clock?: number[];
+  /**
+   * A timer to fire after the script, before checking for a terminal state.
+   *
+   * Round games end on a deadline rather than on a move: without this, their scripted
+   * match would correctly never terminate and the suite would report it as a failure.
+   */
+  finalTimerId?: string;
 }
 
 export interface ConformanceFinding {
@@ -34,7 +49,7 @@ export function runConformance<TState>(
   const findings: ConformanceFinding[] = [];
   const record = (check: string, detail: string) => findings.push({ check, detail });
 
-  const makeCtx = (draws: number[], cursor = { i: 0 }): GameContext => ({
+  const makeCtx = (draws: number[], cursor = { i: 0 }, clockCursor = { i: 0 }): GameContext => ({
     matchId: 'conformance-match',
     players: scenario.players,
     config: scenario.config ?? {},
@@ -42,7 +57,13 @@ export function runConformance<TState>(
       const value = draws[cursor.i++] ?? 0;
       return value % max;
     },
-    now: () => 1_700_000_000_000,
+    now: () => {
+      const reads = scenario.clock;
+      if (!reads || reads.length === 0) return 1_700_000_000_000;
+      const value = reads[Math.min(clockCursor.i, reads.length - 1)]!;
+      clockCursor.i++;
+      return value;
+    },
   });
 
   // --- metadata sanity -----------------------------------------------------
@@ -167,10 +188,31 @@ export function runConformance<TState>(
     if (payouts.some((payout) => !Number.isSafeInteger(payout.amount) || payout.amount < 0)) {
       record('settlement', 'payouts must be non-negative integers in minor units');
     }
-    if (total > pot) {
-      // Paying out more than escrow holds would create money (rule 5).
-      record('settlement', `payouts total ${total}, which exceeds the pot of ${pot}`);
+
+    // What "too much" means depends on who is paying (ADR-024).
+    //
+    // A pooled game pays players out of each other's stakes, so exceeding the pot would
+    // create money. A house-banked game is *expected* to exceed it — that is what winning
+    // against the house means — but it must still be bounded, and the bound is the payout
+    // multiple the game itself declares. A house-banked game with no declared bound is the
+    // failure: unbounded house liability is not something to discover in production.
+    const banking = meta.banking ?? 'pooled';
+    if (banking === 'pooled') {
+      if (total > pot) {
+        record('settlement', `payouts total ${total}, which exceeds the pot of ${pot}`);
+      }
+    } else if (meta.maxPayoutX100 === undefined) {
+      record('settlement', 'a house-banked game must declare meta.maxPayoutX100');
+    } else {
+      const ceiling = Math.floor((pot * meta.maxPayoutX100) / 100);
+      if (total > ceiling) {
+        record(
+          'settlement',
+          `payouts total ${total}, above the declared ceiling of ${ceiling} (${meta.maxPayoutX100 / 100}x)`,
+        );
+      }
     }
+
     const unknown = payouts.find(
       (payout) => !scenario.players.some((player) => player.userId === payout.userId),
     );
@@ -192,6 +234,15 @@ function playScript<TState>(
       state = definition.reduce(ctx, state, action).state;
     } catch {
       // A scripted action may legitimately become invalid once the match ends.
+    }
+  }
+
+  // Round games end on a deadline, not on a move.
+  if (scenario.finalTimerId && !definition.isTerminal(state)) {
+    try {
+      state = definition.onTimeout(ctx, state, scenario.finalTimerId).state;
+    } catch {
+      // Reported by the terminal check below rather than swallowed silently.
     }
   }
   return { state };

@@ -10,6 +10,8 @@ export interface StakeTier {
   stake: number;
   currency: string;
   enabled: boolean;
+  /** Game-specific tier configuration (P8: Crash bet bounds, caps, timings). */
+  config: Record<string, unknown>;
 }
 
 @Injectable()
@@ -18,7 +20,7 @@ export class MatchmakingRepository {
 
   async listTiers(gameCode?: string): Promise<StakeTier[]> {
     const { rows } = await this.pool.query(
-      `SELECT id, game_code, name, stake, currency, enabled
+      `SELECT id, game_code, name, stake, currency, enabled, config
          FROM game.stake_tiers
         WHERE enabled = true AND ($1::text IS NULL OR game_code = $1)
         ORDER BY game_code, sort_order`,
@@ -31,12 +33,13 @@ export class MatchmakingRepository {
       stake: Number(row.stake),
       currency: row.currency,
       enabled: row.enabled,
+      config: (row.config ?? {}) as Record<string, unknown>,
     }));
   }
 
   async findTier(tierId: string): Promise<StakeTier | null> {
     const { rows } = await this.pool.query(
-      `SELECT id, game_code, name, stake, currency, enabled FROM game.stake_tiers WHERE id = $1`,
+      `SELECT id, game_code, name, stake, currency, enabled, config FROM game.stake_tiers WHERE id = $1`,
       [tierId],
     );
     const row = rows[0];
@@ -48,6 +51,7 @@ export class MatchmakingRepository {
           stake: Number(row.stake),
           currency: row.currency,
           enabled: row.enabled,
+          config: (row.config ?? {}) as Record<string, unknown>,
         }
       : null;
   }

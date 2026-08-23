@@ -7,6 +7,7 @@ import { WalletModule } from './wallet/wallet.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { GameEngineModule } from './game-engine/game-engine.module';
 import { MatchmakingModule } from './matchmaking/matchmaking.module';
+import { CrashModule } from './games/crash/crash.module';
 import { TraceIdMiddleware } from './platform/logging/trace-id.middleware';
 import { MaintenanceMiddleware } from './platform/maintenance/maintenance.middleware';
 
@@ -25,6 +26,7 @@ import { MaintenanceMiddleware } from './platform/maintenance/maintenance.middle
     RealtimeModule,
     GameEngineModule,
     MatchmakingModule,
+    CrashModule,
   ],
 })
 export class AppModule implements NestModule {

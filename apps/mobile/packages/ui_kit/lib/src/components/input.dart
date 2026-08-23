@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme.dart';
 
@@ -19,6 +20,7 @@ class AppInput extends StatelessWidget {
     this.onChanged,
     this.onSubmitted,
     this.autofillHints,
+    this.inputFormatters,
   });
 
   final String label;
@@ -31,6 +33,10 @@ class AppInput extends StatelessWidget {
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
   final Iterable<String>? autofillHints;
+
+  /// Keystroke-level restrictions (digits only for a stake, say). **UX, not validation** —
+  /// the server re-checks every value and is the only thing that can accept one.
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   Widget build(BuildContext context) {
@@ -47,6 +53,7 @@ class AppInput extends StatelessWidget {
           obscureText: obscure,
           enabled: enabled,
           keyboardType: keyboardType,
+          inputFormatters: inputFormatters,
           onChanged: onChanged,
           onSubmitted: onSubmitted,
           autofillHints: autofillHints,

@@ -121,6 +121,13 @@ export class RecoveryService {
       return { matchId, action: 'settled' };
     }
 
+    // Re-arm whatever deadline the rebuilt state calls for.
+    //
+    // Timers live in the process that armed them, so a restart loses every one. A game
+    // driven by player actions survives that — the next action re-arms it. A game whose
+    // clock runs on its own does not: a resumed Crash round would sit in flight forever,
+    // stakes in escrow, waiting for a crash that can no longer happen.
+    await this.engine.armPendingTimer(matchId);
     return { matchId, action: 'resumed' };
   }
 }

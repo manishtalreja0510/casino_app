@@ -18,6 +18,27 @@ export type MatchStatus =
   | 'settled'
   | 'voided';
 
+/**
+ * How players are admitted to a match (ADR-023).
+ *
+ * `matchmade` — a queue forms a fixed roster and everyone is charged in one transaction,
+ * or nobody is. `rounds` — a match is opened empty, players buy in independently during a
+ * betting window, and it starts with whoever paid. The difference is deliberate: in a
+ * duel one player who cannot pay means there is no game, while in a round game it means
+ * one fewer better.
+ */
+export type GameMode = 'matchmade' | 'rounds';
+
+/**
+ * Where winnings come from (ADR-024).
+ *
+ * `pooled` — players are paid out of each other's stakes; payouts can never exceed
+ * escrow. `house` — the house is the counterparty, so a payout may exceed escrow and the
+ * difference is drawn from the house float. The engine routes settlement on this field;
+ * it never branches on a game's code.
+ */
+export type GameBanking = 'pooled' | 'house';
+
 export interface GameMeta {
   /** Stable identifier, e.g. `coin-duel`. Used in kill-switch keys and match records. */
   readonly code: string;
@@ -28,6 +49,16 @@ export interface GameMeta {
   readonly maxPlayers: number;
   /** Default per-turn deadline in milliseconds; 0 means the game has no turn timer. */
   readonly turnTimeoutMs: number;
+  /** Defaults to `matchmade` — the model every game had before ADR-023. */
+  readonly mode?: GameMode;
+  /** Defaults to `pooled` — the model every game had before ADR-024. */
+  readonly banking?: GameBanking;
+  /**
+   * Worst-case payout for a player, as a multiple of their stake ×100, for house-banked
+   * games. Exposure control needs a bound the platform can compute *before* a round runs;
+   * a game that cannot state one has no business being house-banked.
+   */
+  readonly maxPayoutX100?: number;
 }
 
 export interface GamePlayer {
@@ -36,6 +67,12 @@ export interface GamePlayer {
   readonly seat: number;
   /** Buy-in already held in escrow, in integer minor units. */
   readonly stake: number;
+  /**
+   * Per-player data fixed at join time, before the match starts — a Crash auto-cash-out
+   * target, a poker sit-out preference. Part of the roster rather than of state because
+   * it is decided before `init` runs, and it is replayed with the roster.
+   */
+  readonly meta?: Readonly<Record<string, unknown>>;
 }
 
 /**
@@ -107,6 +144,26 @@ export interface GameDefinition<TState = unknown> {
    * so a game cannot leak hidden information by forgetting to filter (rule 2).
    */
   playerView(ctx: GameContext, state: TState, userId: string): Readonly<Record<string, unknown>>;
+
+  /**
+   * What anyone watching the match may see — no player identity involved.
+   *
+   * Round games have spectators and a shared room; this is the only state that reaches
+   * it. A game that omits it simply has no public view, and nothing is broadcast.
+   */
+  publicView?(ctx: GameContext, state: TState): Readonly<Record<string, unknown>>;
+
+  /**
+   * The deadline that should be armed for this state *right now*.
+   *
+   * `ReduceResult.timer` covers deadlines created by a move. This covers the two moments
+   * where there is no move to carry one: immediately after `init`, and after a restart
+   * has replayed a match back into memory. Without it a game whose clock runs on its own
+   * — Crash in flight — resumes frozen.
+   *
+   * May read `ctx.now()`: it is never called during replay.
+   */
+  pendingTimer?(ctx: GameContext, state: TState): { readonly id: string; readonly delayMs: number } | null;
 
   isTerminal(state: TState): boolean;
 

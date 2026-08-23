@@ -36,7 +36,7 @@ export class MatchRepository {
       stake: number;
       currency: string;
       config: Record<string, unknown>;
-      players: { userId: string; seat: number; stake: number }[];
+      players: { userId: string; seat: number; stake: number; meta?: Record<string, unknown> }[];
     },
   ): Promise<string> {
     const id = uuidv7();
@@ -46,12 +46,39 @@ export class MatchRepository {
       [id, input.gameCode, input.gameVersion, input.stake, input.currency, JSON.stringify(input.config)],
     );
     for (const player of input.players) {
-      await client.query(
-        'INSERT INTO game.match_players (match_id, user_id, seat, stake) VALUES ($1, $2, $3, $4)',
-        [id, player.userId, player.seat, player.stake],
-      );
+      await MatchRepository.insertPlayer(client, id, player);
     }
     return id;
+  }
+
+  /**
+   * Seats one player in an existing match (ADR-023).
+   *
+   * The caller holds the match row lock, which is what makes `seat` safe to compute from
+   * the current roster: two joins cannot both read "three players" and both take seat 3.
+   */
+  async addPlayer(
+    client: PoolClient,
+    input: {
+      matchId: string;
+      userId: string;
+      seat: number;
+      stake: number;
+      meta?: Record<string, unknown>;
+    },
+  ): Promise<void> {
+    await MatchRepository.insertPlayer(client, input.matchId, input);
+  }
+
+  private static async insertPlayer(
+    client: PoolClient,
+    matchId: string,
+    player: { userId: string; seat: number; stake: number; meta?: Record<string, unknown> },
+  ): Promise<void> {
+    await client.query(
+      'INSERT INTO game.match_players (match_id, user_id, seat, stake, meta) VALUES ($1, $2, $3, $4, $5)',
+      [matchId, player.userId, player.seat, player.stake, JSON.stringify(player.meta ?? {})],
+    );
   }
 
   async findMatch(id: string, client?: PoolClient): Promise<MatchRow | null> {
@@ -77,10 +104,15 @@ export class MatchRepository {
   async listPlayers(matchId: string, client?: PoolClient): Promise<GamePlayer[]> {
     const executor = client ?? this.pool;
     const { rows } = await executor.query(
-      'SELECT user_id, seat, stake FROM game.match_players WHERE match_id = $1 ORDER BY seat',
+      'SELECT user_id, seat, stake, meta FROM game.match_players WHERE match_id = $1 ORDER BY seat',
       [matchId],
     );
-    return rows.map((row) => ({ userId: row.user_id, seat: row.seat, stake: Number(row.stake) }));
+    return rows.map((row) => ({
+      userId: row.user_id,
+      seat: row.seat,
+      stake: Number(row.stake),
+      meta: (row.meta ?? {}) as Record<string, unknown>,
+    }));
   }
 
   async setStatus(
@@ -122,11 +154,15 @@ export class MatchRepository {
       payload: Record<string, unknown>;
       actorId?: string | null;
       draws?: RngDraw[];
+      /** Clock reads the reducer consumed, recorded for the same reason draws are. */
+      clock?: number[];
     },
   ): Promise<void> {
-    const payload = input.draws?.length
-      ? { ...input.payload, __draws: input.draws }
-      : input.payload;
+    const payload = {
+      ...input.payload,
+      ...(input.draws?.length ? { __draws: input.draws } : {}),
+      ...(input.clock?.length ? { __clock: input.clock } : {}),
+    };
 
     await client.query(
       `INSERT INTO game.game_events (id, match_id, seq, type, payload, actor_id)
@@ -191,6 +227,27 @@ export class MatchRepository {
       [limit, afterId ?? null],
     );
     return rows.map((row) => row.id);
+  }
+
+  /**
+   * The round currently open or in flight for a stake tier, if any (ADR-023).
+   *
+   * Round games need this after a restart, and after a leadership change: the round loop
+   * must not open a second round for a tier that already has one, and the only durable
+   * record of that is here rather than in the memory of whichever process opened it.
+   */
+  async findActiveRound(gameCode: string, tierId: string): Promise<MatchRow | null> {
+    const { rows } = await this.pool.query(
+      `SELECT id, game_code, game_version, status, stake, currency, config, void_reason
+         FROM game.matches
+        WHERE game_code = $1
+          AND config->>'tierId' = $2
+          AND status IN ('created','starting','in_progress','settling')
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [gameCode, tierId],
+    );
+    return rows[0] ? MatchRepository.toMatch(rows[0]) : null;
   }
 
   async countRecoverableMatches(): Promise<number> {

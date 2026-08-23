@@ -11,7 +11,7 @@ Purpose: the **only** owner of money state. Every balance anyone ever sees deriv
 
 - **`accounts`** — id (UUIDv7), type, owner ref, currency, status. Types:
   - `user_wallet` — one per (user, currency); launch: `TST` only.
-  - `house_main` — house float per currency (faucet source, house-banked game counterparty).
+  - `house_main` — house float per currency (faucet source, house-banked game counterparty). **The only account allowed to go negative**, and from P8 it routinely does: a round the players win is paid from here (ADR-024). Its running balance is an operational number — a float that trends down is either variance or a payout bug, and telling those apart is what P10/P12's edge-drift metric is for.
   - `rake` — house revenue from pooled games (poker rake).
   - `bonus` — promotional pool (schema-ready; product rules later phase).
   - `match_escrow` — **one per match**, opened at match creation, must read zero after settlement. (Poker refines this to a **table-scoped** `match_escrow`-class account per table instance, since stacks persist across hand-matches — `./poker.md §5`; per-match remains the general model.)
@@ -32,7 +32,8 @@ All operations: **idempotency key required**, **single DB transaction**, ordered
 |---|---|---|
 | `grantFaucet(userId, amount)` | house_main −a / user +a | **TST only**, per-user rate + daily cap + lifetime cap (config); velocity-abuse signal → risk (P10). Exists so dev/staging economy runs without payments; disabled for real currencies permanently |
 | `buyIn(matchId, userId, amount)` | user −a / match_escrow +a | idempotency key `buyin:{matchId}:{userId}[:{seq}]` (seq for poker top-ups); fails cleanly on insufficient funds (CHECK is backstop, precheck is UX); called by game-engine/matchmaking flows only |
-| `settle(matchId, instructions[])` | match_escrow −Σ / winners +w… / rake +r | **single transaction for the whole match**, idempotent by `settle:{matchId}`; instructions come from `GameDefinition.settle()` via engine (ADR-009); validates Σ(instructions) == escrow balance exactly, else reject + page (never partial-settle). Escrow account must be 0 after — asserted in-tx |
+| `settle(matchId, instructions[])` | match_escrow −Σ / winners +w… / rake +r | **Pooled games.** Single transaction for the whole match, idempotent by `settle:{matchId}`; instructions come from `GameDefinition.settle()` via engine (ADR-009); payouts may not exceed escrow, else reject + page (never partial-settle). Escrow must be 0 after — asserted in-tx |
+| `settleHouseBanked(matchId, instructions[])` | match_escrow −Σ / winners +w… / **house_main ±net** | **House-banked games** (P8, ADR-024). Same transaction, same idempotency key, same zero-escrow invariant; the difference is that `house_main` is a *balancing* leg rather than a residual one — negative when the house pays winnings beyond escrow, positive when it collects losing stakes. Exposure is capped at bet time, so the worst case is known before the round runs |
 | `reverse(txId, reason)` | mirror-image entries of original | the only "correction"; refs original; used for void-hand refunds (P6 crash recovery), admin corrections, payment returns (P17); reversing a reversal is rejected |
 | `adminAdjustment(accountId, amount, reason)` | house_main ∓ / target ± | **four-eyes**: proposer + approver (distinct admin principals, P12; CLI with two-key flow pre-P12), threshold-free (always four-eyes), reason mandatory, audit both actors; implemented as its own tx type, reversible like everything |
 

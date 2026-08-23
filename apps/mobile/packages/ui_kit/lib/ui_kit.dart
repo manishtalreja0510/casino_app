@@ -11,6 +11,7 @@ export 'src/components/button.dart';
 export 'src/components/countdown_ring.dart';
 export 'src/components/input.dart';
 export 'src/components/money_display.dart';
+export 'src/components/multiplier_display.dart';
 export 'src/components/states.dart';
 export 'src/components/surfaces.dart';
 export 'src/theme.dart';

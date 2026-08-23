@@ -5,6 +5,7 @@ import type {
   GameContext,
   GameDefinition,
   GamePlayer,
+  MatchStatus,
   ReduceResult,
 } from '@casino/contracts';
 import { PG_POOL } from '../platform/database/database.module';
@@ -20,6 +21,7 @@ import { Rooms } from '../realtime/realtime.types';
 import { GameRegistry } from './game.registry';
 import { MatchRepository, type MatchRow } from './match.repository';
 import { RngService, type RngDraw } from './rng.service';
+import { ClockService } from './clock.service';
 import {
   GameDisabledError,
   InvalidActionError,
@@ -31,6 +33,13 @@ import {
 /** How many events between snapshots. Bounds replay cost without making snapshots the truth. */
 const SNAPSHOT_INTERVAL = 25;
 
+/** What a match-change listener is told. Deliberately thin — listeners re-read what they need. */
+export interface MatchChange {
+  matchId: string;
+  gameCode: string;
+  status: MatchStatus;
+}
+
 /**
  * The engine (ADR-006, ADR-009).
  *
@@ -41,12 +50,14 @@ const SNAPSHOT_INTERVAL = 25;
 @Injectable()
 export class EngineService {
   private readonly logger = new Logger(EngineService.name);
+  private readonly changeListeners: Array<(change: MatchChange) => void | Promise<void>> = [];
 
   constructor(
     @Inject(PG_POOL) private readonly pool: Pool,
     private readonly registry: GameRegistry,
     private readonly matches: MatchRepository,
     private readonly rng: RngService,
+    private readonly clock: ClockService,
     private readonly wallet: WalletService,
     private readonly realtime: RealtimeService,
     private readonly timers: TimerService,
@@ -118,6 +129,126 @@ export class EngineService {
     return { matchId };
   }
 
+  /**
+   * Opens a match nobody has joined yet (ADR-023).
+   *
+   * Round games need a match to escrow into *before* they know who is playing: the
+   * betting window is the roster. Only games that declare `mode: 'rounds'` may be opened
+   * this way — an empty matchmade match would be a bug that silently produced a game with
+   * no players.
+   */
+  async createOpenMatch(input: {
+    gameCode: string;
+    stake: number;
+    config?: Record<string, unknown>;
+  }): Promise<{ matchId: string }> {
+    const definition = this.registry.latest(input.gameCode);
+    if (definition.meta.mode !== 'rounds') {
+      throw new InvalidActionError(`${definition.meta.code} is not a round-based game`);
+    }
+    if (!(await this.flags.isEnabled(gameEnabledKey(definition.meta.code)))) {
+      throw new GameDisabledError(definition.meta.code);
+    }
+
+    const matchId = await withTransaction(this.pool, (client) =>
+      this.matches.createMatch(client, {
+        gameCode: definition.meta.code,
+        gameVersion: definition.meta.version,
+        stake: input.stake,
+        currency: 'TST',
+        config: input.config ?? {},
+        players: [],
+      }),
+    );
+    return { matchId };
+  }
+
+  /**
+   * Seats one player in an open match and takes their buy-in.
+   *
+   * Deliberately **not** all-or-nothing across players — that is the whole difference
+   * from `createMatch`. In a duel, one player who cannot pay means there is no game; in a
+   * round, it means one fewer better, and cancelling everyone else's bet because of it
+   * would be the bug, not the safeguard.
+   *
+   * The match row is locked for the join, so seat numbers and the capacity check cannot
+   * race. The buy-in shares this transaction: a seated player who was never charged, or a
+   * charge with no seat, are both impossible.
+   */
+  async joinMatch(input: {
+    matchId: string;
+    userId: string;
+    stake: number;
+    meta?: Record<string, unknown>;
+    /**
+     * A last check the caller runs against the roster **inside the lock**.
+     *
+     * Round-level limits — total staked, house exposure, seat rules — depend on who has
+     * already joined, and checking them before the transaction is a race: two bets read
+     * the same total and both look affordable. Throwing here rejects the join with
+     * nothing committed.
+     */
+    guard?: (players: readonly GamePlayer[]) => void;
+  }): Promise<{ seat: number }> {
+    return withTransaction(this.pool, async (client) => {
+      const match = await this.matches.lockMatch(client, input.matchId);
+      if (!match) throw new MatchNotFoundError();
+      if (match.status !== 'created') throw new MatchNotPlayableError(match.status);
+
+      const definition = this.registry.get(match.gameCode, match.gameVersion);
+      const players = await this.matches.listPlayers(input.matchId, client);
+
+      if (players.some((player) => player.userId === input.userId)) {
+        throw new InvalidActionError('You have already joined this round');
+      }
+      if (players.length >= definition.meta.maxPlayers) {
+        throw new InvalidActionError('This round is full');
+      }
+
+      input.guard?.(players);
+
+      const seat = players.length;
+      await this.matches.addPlayer(client, {
+        matchId: input.matchId,
+        userId: input.userId,
+        seat,
+        stake: input.stake,
+        meta: input.meta ?? {},
+      });
+
+      if (input.stake > 0) {
+        await this.wallet.buyIn(
+          { userId: input.userId, matchId: input.matchId, amount: input.stake },
+          client,
+        );
+      }
+
+      return { seat };
+    });
+  }
+
+  /**
+   * Starts an open match once its window closes.
+   *
+   * Returns `started: false` rather than throwing when too few players joined: an empty
+   * betting window is an ordinary outcome of a round game, not an error, and the caller
+   * needs to void the round and open the next one.
+   */
+  async startMatch(matchId: string): Promise<{ started: boolean; players: number }> {
+    const match = await this.matches.findMatch(matchId);
+    if (!match) throw new MatchNotFoundError();
+    if (match.status !== 'created') return { started: false, players: 0 };
+
+    const definition = this.registry.get(match.gameCode, match.gameVersion);
+    const players = await this.matches.listPlayers(matchId);
+    if (players.length < definition.meta.minPlayers) {
+      return { started: false, players: players.length };
+    }
+
+    await this.start(matchId);
+    return { started: true, players: players.length };
+  }
+
   /** Initialises game state and moves the match to `in_progress`. */
   private async start(matchId: string): Promise<void> {
     await withTransaction(this.pool, async (client) => {
@@ -128,7 +259,8 @@ export class EngineService {
       const definition = this.registry.get(match.gameCode, match.gameVersion);
       const players = await this.matches.listPlayers(matchId, client);
       const recorder = this.rng.createRecorder();
-      const ctx = EngineService.context(match, players, recorder.random);
+      const clock = this.clock.createRecorder();
+      const ctx = EngineService.context(match, players, recorder.random, clock.now);
 
       const state = definition.init(ctx);
 
@@ -139,11 +271,16 @@ export class EngineService {
         type: 'match:init',
         payload: { state: state as Record<string, unknown> },
         draws: recorder.draws,
+        clock: clock.reads,
       });
       await this.matches.saveSnapshot(client, matchId, 1, state);
     });
 
+    // A game whose clock runs on its own (Crash in flight) has no move to carry its first
+    // deadline; without this it would start and then never end.
+    await this.armPendingTimer(matchId);
     await this.broadcastState(matchId);
+    await this.notifyChanged(matchId);
   }
 
   /**
@@ -168,7 +305,8 @@ export class EngineService {
       const state = await this.rebuildState(match, players, definition, client);
 
       const recorder = this.rng.createRecorder();
-      const ctx = EngineService.context(match, players, recorder.random);
+      const clock = this.clock.createRecorder();
+      const ctx = EngineService.context(match, players, recorder.random, clock.now);
 
       let reduced: ReduceResult<never>;
       try {
@@ -190,6 +328,7 @@ export class EngineService {
         },
         actorId: action.userId,
         draws: recorder.draws,
+        clock: clock.reads,
       });
 
       if (seq % SNAPSHOT_INTERVAL === 0) {
@@ -204,6 +343,7 @@ export class EngineService {
 
     await this.applyTimer(matchId, result.reduced);
     await this.broadcastState(matchId);
+    await this.notifyChanged(matchId);
     if (result.terminal) await this.settle(matchId);
   }
 
@@ -218,7 +358,8 @@ export class EngineService {
       const state = await this.rebuildState(match, players, definition, client);
 
       const recorder = this.rng.createRecorder();
-      const ctx = EngineService.context(match, players, recorder.random);
+      const clock = this.clock.createRecorder();
+      const ctx = EngineService.context(match, players, recorder.random, clock.now);
       const reduced = definition.onTimeout(ctx, state as never, timerId);
 
       const seq = await this.matches.nextSeq(client, matchId);
@@ -232,6 +373,7 @@ export class EngineService {
           events: reduced.events,
         },
         draws: recorder.draws,
+        clock: clock.reads,
       });
 
       const terminal = definition.isTerminal(reduced.state as never);
@@ -242,6 +384,7 @@ export class EngineService {
     if (!result) return;
     await this.applyTimer(matchId, result.reduced);
     await this.broadcastState(matchId);
+    await this.notifyChanged(matchId);
     if (result.terminal) await this.settle(matchId);
   }
 
@@ -260,14 +403,27 @@ export class EngineService {
     const definition = this.registry.get(match.gameCode, match.gameVersion);
     const state = await this.rebuildState(match, players, definition);
 
-    const recorder = this.rng.createRecorder();
-    const ctx = EngineService.context(match, players, recorder.random);
+    // `settle` derives payouts from a terminal state and nothing else: no randomness, no
+    // clock. Both are wired to throw here rather than merely discouraged in a comment,
+    // because a settlement that is not reproducible cannot be re-derived in a dispute.
+    const ctx = EngineService.context(
+      match,
+      players,
+      () => {
+        throw new Error('settle must not draw randomness');
+      },
+      EngineService.forbiddenClock('settle'),
+    );
     const payouts = definition.settle(ctx, state as never);
+    const instructions = payouts.map((payout) => ({ userId: payout.userId, amount: payout.amount }));
 
-    await this.wallet.settle({
-      matchId,
-      payouts: payouts.map((payout) => ({ userId: payout.userId, amount: payout.amount })),
-    });
+    // Which purse pays is a property the game declares, not something the engine infers
+    // from its code (ADR-024).
+    const banking = definition.meta.banking ?? 'pooled';
+    const result =
+      banking === 'house'
+        ? await this.wallet.settleHouseBanked({ matchId, payouts: instructions })
+        : await this.wallet.settle({ matchId, payouts: instructions });
 
     await withTransaction(this.pool, async (client) => {
       await this.matches.setStatus(client, matchId, 'settled');
@@ -276,13 +432,21 @@ export class EngineService {
           actorType: 'system',
           action: 'game.settled',
           subjectRef: matchId,
-          payload: { gameCode: match.gameCode, payouts },
+          // The house leg is recorded because it is the number finance and risk read: a
+          // payout implementation drifting from its configured edge shows up here first.
+          payload: {
+            gameCode: match.gameCode,
+            banking,
+            payouts,
+            houseNet: 'houseNet' in result ? result.houseNet : 0,
+          },
         },
         client,
       );
     });
 
     await this.realtime.broadcast(Rooms.match(matchId), 'game:settled', { matchId, payouts });
+    await this.notifyChanged(matchId);
   }
 
   /**
@@ -320,6 +484,7 @@ export class EngineService {
 
     this.logger.warn(`match ${matchId} voided (${reason}); buy-ins refunded`);
     await this.realtime.broadcast(Rooms.match(matchId), 'game:voided', { matchId, reason });
+    await this.notifyChanged(matchId);
   }
 
   /** The player-filtered view — the only state a client ever receives. */
@@ -332,9 +497,16 @@ export class EngineService {
 
     const definition = this.registry.get(match.gameCode, match.gameVersion);
     const state = await this.rebuildState(match, players, definition);
-    const ctx = EngineService.context(match, players, () => {
-      throw new Error('playerView must not draw randomness');
-    });
+    // A live clock here is correct and deliberate: `playerView` is never replayed, and a
+    // round game's view legitimately depends on how long the round has been running.
+    const ctx = EngineService.context(
+      match,
+      players,
+      () => {
+        throw new Error('playerView must not draw randomness');
+      },
+      () => Date.now(),
+    );
 
     return {
       matchId,
@@ -342,6 +514,95 @@ export class EngineService {
       gameCode: match.gameCode,
       view: definition.playerView(ctx, state as never, userId),
     };
+  }
+
+  /**
+   * The spectator view — what a shared round room may carry.
+   *
+   * Returns null for a game that declares no public view, which is the safe answer: a
+   * game that has not said what outsiders may see does not get to broadcast anything.
+   */
+  async publicViewFor(matchId: string): Promise<Record<string, unknown> | null> {
+    const match = await this.matches.findMatch(matchId);
+    if (!match) throw new MatchNotFoundError();
+
+    const definition = this.registry.get(match.gameCode, match.gameVersion);
+    if (!definition.publicView) return null;
+
+    const players = await this.matches.listPlayers(matchId);
+    const state = await this.rebuildState(match, players, definition);
+    const ctx = EngineService.context(
+      match,
+      players,
+      () => {
+        throw new Error('publicView must not draw randomness');
+      },
+      () => Date.now(),
+    );
+
+    return {
+      matchId,
+      status: match.status,
+      gameCode: match.gameCode,
+      ...definition.publicView(ctx, state as never),
+    };
+  }
+
+  /**
+   * Arms the deadline the current state calls for, if the game defines one.
+   *
+   * Called after `init` and after recovery has replayed a match back into memory — the
+   * two points where a deadline exists but no move produced it.
+   */
+  async armPendingTimer(matchId: string): Promise<void> {
+    const match = await this.matches.findMatch(matchId);
+    if (!match || match.status !== 'in_progress') return;
+
+    const definition = this.registry.get(match.gameCode, match.gameVersion);
+    if (!definition.pendingTimer) return;
+
+    const players = await this.matches.listPlayers(matchId);
+    const state = await this.rebuildState(match, players, definition);
+    const ctx = EngineService.context(
+      match,
+      players,
+      () => {
+        throw new Error('pendingTimer must not draw randomness');
+      },
+      () => Date.now(),
+    );
+
+    const timer = definition.pendingTimer(ctx, state as never);
+    if (timer) this.scheduleTimer(matchId, timer);
+  }
+
+  /**
+   * In-process notification that a match moved.
+   *
+   * Round games need to publish their own lifecycle to a shared room, and the engine is
+   * the only thing that knows when a round actually started or crashed. Deliberately
+   * in-process and best-effort: it drives presentation, never money. Anything that must
+   * survive a restart reads PostgreSQL instead.
+   */
+  onMatchChanged(listener: (change: MatchChange) => void | Promise<void>): void {
+    this.changeListeners.push(listener);
+  }
+
+  private async notifyChanged(matchId: string): Promise<void> {
+    if (this.changeListeners.length === 0) return;
+    const match = await this.matches.findMatch(matchId);
+    if (!match) return;
+
+    for (const listener of this.changeListeners) {
+      try {
+        await listener({ matchId, gameCode: match.gameCode, status: match.status });
+      } catch (error) {
+        // A listener is a spectator of the engine; it must never be able to fail a match.
+        this.logger.warn(
+          `match-change listener failed: ${error instanceof Error ? error.message : 'unknown'}`,
+        );
+      }
+    }
   }
 
   /**
@@ -392,17 +653,13 @@ export class EngineService {
       if (events.length === 0) return { ok: false, reason: 'no events' };
 
       const initEvent = events[0]!;
-      const initDraws = (initEvent.payload.__draws as RngDraw[] | undefined) ?? [];
-      let state = definition.init(
-        EngineService.context(match, players, this.rng.createReplayer(initDraws).random),
-      ) as unknown;
+      let state = definition.init(this.replayContext(match, players, initEvent)) as unknown;
 
       const mismatch = EngineService.compareState(state, initEvent.payload.state, initEvent.seq);
       if (mismatch) return { ok: false, reason: mismatch };
 
       for (const event of events.slice(1)) {
-        const draws = (event.payload.__draws as RngDraw[] | undefined) ?? [];
-        const ctx = EngineService.context(match, players, this.rng.createReplayer(draws).random);
+        const ctx = this.replayContext(match, players, event);
 
         if (event.type === 'match:action') {
           const action = event.payload.action as GameAction;
@@ -422,6 +679,24 @@ export class EngineService {
     }
   }
 
+  /**
+   * A context that replays what the original run consumed.
+   *
+   * Both sources of non-determinism come from the event itself: the RNG draws it recorded
+   * and the clock reads it recorded. Replay therefore reproduces the match that was
+   * played, not a fresh one that merely follows the same rules.
+   */
+  private replayContext(match: MatchRow, players: GamePlayer[], event: { payload: Record<string, unknown> }): GameContext {
+    const draws = (event.payload.__draws as RngDraw[] | undefined) ?? [];
+    const reads = (event.payload.__clock as number[] | undefined) ?? [];
+    return EngineService.context(
+      match,
+      players,
+      this.rng.createReplayer(draws).random,
+      this.clock.createReplayer(reads).now,
+    );
+  }
+
   /** Returns a description of the divergence, or null when the states match. */
   private static compareState(replayed: unknown, recorded: unknown, seq: number): string | null {
     if (recorded === undefined) return null;
@@ -434,8 +709,13 @@ export class EngineService {
 
   private async applyTimer(matchId: string, reduced: ReduceResult<never>): Promise<void> {
     if (!reduced.timer) return;
-    const { id, delayMs } = reduced.timer;
-    this.timers.schedule(`${matchId}:${id}`, delayMs, () => this.handleTimeout(matchId, id));
+    this.scheduleTimer(matchId, reduced.timer);
+  }
+
+  private scheduleTimer(matchId: string, timer: { id: string; delayMs: number }): void {
+    this.timers.schedule(`${matchId}:${timer.id}`, timer.delayMs, () =>
+      this.handleTimeout(matchId, timer.id),
+    );
   }
 
   /** Sends each participant their own view — never a shared blob (rule 2). */
@@ -447,17 +727,27 @@ export class EngineService {
     }
   }
 
+  /**
+   * Builds the context a reducer runs against.
+   *
+   * Both non-deterministic capabilities are injected rather than reached for: recording
+   * drawers during play, replaying ones during recovery, throwing ones where the hook is
+   * required to be pure. A game cannot opt out — `Math.random()` and `Date.now()` are
+   * simply not in scope inside a reducer.
+   */
   private static context(
     match: MatchRow,
     players: GamePlayer[],
     random: (max: number, purpose: string) => number,
+    now: () => number,
   ): GameContext {
-    return {
-      matchId: match.id,
-      players,
-      config: match.config,
-      random,
-      now: () => Date.now(),
+    return { matchId: match.id, players, config: match.config, random, now };
+  }
+
+  /** A clock for hooks that must be deterministic — `settle` derives from terminal state. */
+  private static forbiddenClock(hook: string): () => number {
+    return () => {
+      throw new Error(`${hook} must not read the clock: its result has to be replayable`);
     };
   }
 }

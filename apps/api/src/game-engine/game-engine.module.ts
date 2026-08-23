@@ -3,6 +3,7 @@ import { EngineService } from './engine.service';
 import { GameRegistry } from './game.registry';
 import { MatchRepository } from './match.repository';
 import { RngService } from './rng.service';
+import { ClockService } from './clock.service';
 import { RecoveryService } from './recovery.service';
 import { GameEngineController } from './game-engine.controller';
 import { coinDuel } from './games/coin-duel.game';
@@ -16,8 +17,8 @@ import { RealtimeModule } from '../realtime/realtime.module';
 @Module({
   imports: [AuthModule, WalletModule, RealtimeModule],
   controllers: [GameEngineController],
-  providers: [EngineService, GameRegistry, MatchRepository, RngService, RecoveryService],
-  exports: [EngineService, GameRegistry, RngService],
+  providers: [EngineService, GameRegistry, MatchRepository, RngService, ClockService, RecoveryService],
+  exports: [EngineService, GameRegistry, MatchRepository, RngService, ClockService],
 })
 export class GameEngineModule implements OnModuleInit, OnApplicationBootstrap {
   private readonly logger = new Logger(GameEngineModule.name);

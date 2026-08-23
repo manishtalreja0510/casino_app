@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MatchmakingService } from './matchmaking.service';
 import { MatchmakingRepository } from './matchmaking.repository';
 import { QueueService } from './queue.service';
+import { FormationSweeper } from './formation-sweeper';
 import { LobbyController } from './lobby.controller';
 import { AuthModule } from '../auth/auth.module';
 import { WalletModule } from '../wallet/wallet.module';
@@ -11,7 +12,7 @@ import { GameEngineModule } from '../game-engine/game-engine.module';
 @Module({
   imports: [AuthModule, WalletModule, RealtimeModule, GameEngineModule],
   controllers: [LobbyController],
-  providers: [MatchmakingService, MatchmakingRepository, QueueService],
+  providers: [MatchmakingService, MatchmakingRepository, QueueService, FormationSweeper],
   exports: [MatchmakingService, MatchmakingRepository, QueueService],
 })
 export class MatchmakingModule {}

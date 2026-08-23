@@ -28,7 +28,7 @@ describe('audit log (integration)', () => {
     await audit.append({ actorType: 'system', action: 'test.append', payload: { n: 1 } });
     await audit.append({ actorType: 'system', action: 'test.append', payload: { n: 2 } });
 
-    const result = await chain.verify();
+    const result = await chain.verifyAll();
     expect(result.valid).toBe(true);
     expect(result.checked).toBeGreaterThanOrEqual(2);
   });
@@ -47,32 +47,89 @@ describe('audit log (integration)', () => {
     );
   });
 
+  it('does not call a chain "verified" when it only read a prefix of it', async () => {
+    // The bug this pins down: verification reads a bounded window, and it used to return
+    // `valid: true` after filling that window — so once the audit log grew past it, a
+    // scheduled check would report an intact chain while never looking at anything
+    // recent. Tampering with a recent row would have gone undetected forever. `valid` now
+    // means "nothing I read was wrong" and `complete` means "I read all of it"; a caller
+    // must require both.
+    await audit.append({ actorType: 'system', action: 'test.window' });
+    await audit.append({ actorType: 'system', action: 'test.window' });
+
+    const window = await chain.verify({ limit: 1 });
+    expect(window.valid).toBe(true);
+    expect(window.complete).toBe(false);
+    expect(window.nextFromSeq).toBeGreaterThan(0);
+
+    // Paging with the same small window still walks the whole chain, and links each
+    // window to the next rather than trusting the boundary row.
+    const full = await chain.verifyAll({ windowSize: 3 });
+    expect(full.valid).toBe(true);
+    expect(full.complete).toBe(true);
+    expect(full.checked).toBeGreaterThan(3);
+  });
+
   it('detects tampering that bypasses the trigger', async () => {
-    await audit.append({ actorType: 'system', action: 'test.tamper', payload: { amount: 100 } });
-    const { rows } = await pool.query<{ seq: string }>(
-      'SELECT seq FROM audit.audit_log ORDER BY seq DESC LIMIT 1',
+    // Tamper with **this test's own row**, found by id, and put back the exact bytes that
+    // were there.
+    //
+    // An earlier version took `ORDER BY seq DESC LIMIT 1` and assumed it was its own
+    // append. It usually was — until an instance started doing scheduled work, at which
+    // point a background formation could land a row in between. The test then "restored"
+    // somebody else's row to a payload it had invented, permanently breaking the local
+    // chain: a tamper-detection test quietly tampering with the audit log. Identify the
+    // row, capture its original bytes, restore those.
+    const id = await audit.append({
+      actorType: 'system',
+      action: 'test.tamper',
+      payload: { amount: 100 },
+    });
+
+    const before = await pool.query<{ seq: string; payload: unknown }>(
+      'SELECT seq, payload FROM audit.audit_log WHERE id = $1',
+      [id],
     );
-    const seq = Number(rows[0]!.seq);
+    const seq = Number(before.rows[0]!.seq);
+    const originalPayload = JSON.stringify(before.rows[0]!.payload);
 
     // Simulate an attacker with enough privilege to disable the trigger — the scenario
     // hash-chaining exists for. The chain must still expose the edit.
-    await pool.query('ALTER TABLE audit.audit_log DISABLE TRIGGER audit_log_no_mutation');
+    const withTriggerOff = async (work: () => Promise<void>) => {
+      await pool.query('ALTER TABLE audit.audit_log DISABLE TRIGGER audit_log_no_mutation');
+      try {
+        await work();
+      } finally {
+        await pool.query('ALTER TABLE audit.audit_log ENABLE TRIGGER audit_log_no_mutation');
+      }
+    };
+
+    await withTriggerOff(async () => {
+      await pool.query(
+        `UPDATE audit.audit_log SET payload = '{"amount": 999999}'::jsonb WHERE id = $1`,
+        [id],
+      );
+    });
+
     try {
-      await pool.query(`UPDATE audit.audit_log SET payload = '{"amount": 999999}'::jsonb WHERE seq = $1`, [seq]);
+      const result = await chain.verifyAll();
+      expect(result.valid).toBe(false);
+      expect(result.brokenAtSeq).toBe(seq);
+      expect(result.reason).toMatch(/tampered|does not match/i);
     } finally {
-      await pool.query('ALTER TABLE audit.audit_log ENABLE TRIGGER audit_log_no_mutation');
+      // Restore even if an assertion above failed: a failing test must not leave the
+      // chain broken for every run after it.
+      await withTriggerOff(async () => {
+        await pool.query('UPDATE audit.audit_log SET payload = $2::jsonb WHERE id = $1', [
+          id,
+          originalPayload,
+        ]);
+      });
     }
 
-    const result = await chain.verify();
-    expect(result.valid).toBe(false);
-    expect(result.brokenAtSeq).toBe(seq);
-    expect(result.reason).toMatch(/tampered|does not match/i);
-
-    // Restore so later runs start from a valid chain.
-    await pool.query('ALTER TABLE audit.audit_log DISABLE TRIGGER audit_log_no_mutation');
-    await pool.query(`UPDATE audit.audit_log SET payload = '{"amount": 100}'::jsonb WHERE seq = $1`, [seq]);
-    await pool.query('ALTER TABLE audit.audit_log ENABLE TRIGGER audit_log_no_mutation');
-    expect((await chain.verify()).valid).toBe(true);
+    const restored = await chain.verifyAll();
+    expect(restored.valid).toBe(true);
+    expect(restored.complete).toBe(true);
   });
 
   it('rolls the audit entry back with its caller transaction', async () => {
@@ -95,7 +152,7 @@ describe('audit log (integration)', () => {
         audit.append({ actorType: 'system', action: 'test.concurrent', payload: { i } }),
       ),
     );
-    expect((await chain.verify()).valid).toBe(true);
+    expect((await chain.verifyAll()).valid).toBe(true);
   });
 });
 

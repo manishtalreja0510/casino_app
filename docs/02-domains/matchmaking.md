@@ -1,5 +1,12 @@
 # Domain: Matchmaking & Lobby
 
+> **P8 note.** Matchmaking now covers only games that declare `mode: 'matchmade'`. Round
+> games (Crash) have no queue: their betting window *is* the queue, and joining one goes
+> through the engine's open-roster admission instead (ADR-023). `joinQueue` refuses a round
+> game explicitly rather than enqueueing someone no formation will ever read, the lobby
+> reports each game's `mode` so the client routes on it, and the sweep skips them. The
+> scheduled formation sweep — carried as debt from P7 — now runs as a BullMQ job.
+
 NestJS module `matchmaking` — gets strangers into matches and shows them what's available to play. Built in **P7** on top of the engine (P6) and real-time core (P5). Two formation models, one financial rule: **money moves only at confirmed seat/match**, via wallet escrow — so no queue or reservation failure can ever strand funds.
 
 Related: `docs/02-domains/game-engine.md` (discovery, handoff), `docs/02-domains/game-sessions.md` (match records), `docs/02-domains/wallet.md` (escrow), `docs/02-domains/poker.md` (table specifics), `docs/01-architecture/realtime-architecture.md` (`/lobby` namespace).

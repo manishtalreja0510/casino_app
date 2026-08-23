@@ -102,6 +102,13 @@ class RealtimeClient {
     return false;
   }
 
+  /// Leaves a room. The sequence is forgotten with it: a later re-join adopts the
+  /// server's current sequence rather than trying to resume from a stale one.
+  Future<void> leaveRoom(String room) async {
+    await _emitWithAck('room:leave', {'room': room});
+    _lastSeq.remove(room);
+  }
+
   /// Resumes a room after a reconnect. Returns the number of replayed events, or null
   /// when the server demands a full resync.
   Future<int?> resume(String room) async {

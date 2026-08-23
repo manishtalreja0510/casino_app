@@ -28,6 +28,22 @@ export const envSchema = z.object({
   JWT_PUBLIC_KEY: z.string().min(80),
   JWT_KEY_ID: z.string().default('dev-1'),
 
+  /**
+   * Whether this instance runs **scheduled work** — the Crash round loop and the
+   * matchmaking formation sweep (P8, ADR-023).
+   *
+   * Everything else the platform does is request-driven; these two happen because time
+   * passed. That makes them a *role* rather than a capability: an instance can serve the
+   * whole API without taking it on. Correctness does not depend on this — a Redis lease
+   * decides who drives a tier's rounds, and the sweep is idempotent — but it lets a
+   * deployment separate the roles, and it lets a test process opt out of background work
+   * that would otherwise race its assertions.
+   */
+  SCHEDULED_WORK_ENABLED: z
+    .union([z.boolean(), z.enum(['true', 'false'])])
+    .transform((value) => value === true || value === 'true')
+    .default(true),
+
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).optional(),
 });

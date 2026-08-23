@@ -53,7 +53,7 @@ Companions: `design-system.md` (tokens/components), `asset-animation-pipeline.md
 
 | Screen | Detail |
 |---|---|
-| **Casino game screen** | Purpose: play casino game #1 — shaped by OQ-05 (recommendation Crash), structured as: round state display (`MultiplierCurve` for crash-class), stake controls, history. Entry: matchmaking/lobby. States: round-idle(betting window w/ `CountdownTimerRing`); round-running; round-resolved(win/lose via `WinCelebration`); spectating(joined mid-round); reconnecting(overlay); game-killed(drain notice); error. Components: `MultiplierCurve`, `StakeSelector`, `BalanceDisplay`, `RoundHistoryStrip`, `AppButton`. Exits: leave → game lobby; settlement → match result (or inline). Status: NOT_BUILT (P8). |
+| **Crash table** (casino game #1) | Purpose: play Crash — OQ-05 decided. Entry: lobby tier row (round-mode games route here directly; there is no matchmaking wait). States: between-rounds (nothing open); betting-window (bet + optional auto-cash-out); flying (cash-out available while riding); crashed (win/loss banner, seed revealed); busy (request in flight, controls disabled); error(retry); offline. Components: `AppMultiplierDisplay`, `AppOutcomeStrip`, `AppInput`, `AppButton`, `AppCard`, `AppBanner`, `BalanceDisplay`. Exits: back → lobby. Status: **BUILT** (P8) — placeholder look; no animation choreography or celebration yet (P19). |
 | **Poker table** | Purpose: NLHE cash table (OQ-07 rec.). Entry: lobby seat reservation. States: seating(buy-in via `StakeSelector`); playing — per-seat states via `TableSeat` (empty/occupied/self/acting/sitting-out/disconnected); betting turn (`ActionBar` enabled w/ server-provided options+bounds, `CountdownTimerRing`); showdown (`PlayingCard` reveals per server `playerView` — hole cards only ever own+shown-down, rule 2 ⛔); hand-void notice (crash recovery refund); sit-out; stand-up confirm; reconnecting; table-killed. Components: `TableSeat`, `ChipStack`, `PlayingCard`, `PotDisplay`, `ActionBar`, `CardDealAnimation`, `ChipMoveAnimation`, `WinCelebration`. Exits: stand → game lobby (stack settled to wallet). Status: NOT_BUILT (P9). |
 | **Reconnecting overlay** | Purpose: in-game connection-loss handling (`docs/01-architecture/realtime-architecture.md` resume protocol); not a route — modal overlay. Entry: WS drop during play. States: reconnecting(attempts); resuming(replay/resync); resumed(flash); failed → exit-to-lobby with server-outcome note (auto-fold/sit-out per game policy). Components: `LoadingState`, `OfflineBanner` styling, `AppDialog` (failure). Status: NOT_BUILT (P5 primitive, wired per game P8/P9). |
 | **Match result / settlement** | Purpose: post-match summary — outcome, settlement amounts **from server settlement events only**, ledger reference. Entry: match end. States: loading(settling); settled(win/loss/refund-void); error(settlement pending — never invent numbers client-side, rule 2). Components: `BalanceDisplay`, `AppListTile` (value), `WinCelebration`, `AppButton`. Exits: rematch/re-queue → lobby; wallet history. Status: NOT_BUILT (P8/P9 with each game). |
@@ -86,18 +86,30 @@ Companions: `design-system.md` (tokens/components), `asset-animation-pipeline.md
 | Date | PR | Change |
 |---|---|---|
 | 2026-08-23 | — | Seeded full planned catalog; all screens NOT_BUILT. |
+| 2026-08-23 | P8 | Crash table built at `/play/crash/:tierId`; lobby routes round-mode games to it instead of a queue, and now updates live from `lobby:{gameCode}`. Two `ui_kit` components added (`AppMultiplierDisplay`, `AppOutcomeStrip`). Build-status table below corrected — it had not been updated since P2 and understated what exists. |
 
 ---
 
-## Build status (updated P2, 2026-08-23)
+## Build status (updated P8, 2026-08-23)
 
 What exists in the app today. Everything else in this document remains a plan.
 
+This table had drifted: it still claimed P2's state after P3, P4 and P7 had each shipped
+screens. Corrected here rather than left to accumulate — an out-of-date map is worse than
+no map, because it is trusted.
+
 | Screen | Route | Status | Notes |
 |---|---|---|---|
-| Home (placeholder) | `/` | **BUILT** (P2) | Proves the chassis: config badge, connection state, server health, a zero balance. Replaced by the real lobby in P7. |
-| Component gallery | `/_dev/gallery` | **BUILT** (P2) | Developer/designer reference — every `ui_kit` component in every state. Hidden in production builds. |
-| Everything else | — | NOT_BUILT | Auth (P3), wallet (P4), lobby (P7), game screens (P8/P9), account/RG (P10), notifications (P11). |
+| Session restore | `/starting` | **BUILT** (P3) | Boot state while the stored session is checked. |
+| Sign in / register | `/sign-in` | **BUILT** (P3) | One screen for both; server owns every validation outcome. |
+| Home (placeholder) | `/` | **BUILT** (P2) | Chassis proof: config badge, connection state, server health, balance. Not yet the designed hub. |
+| Lobby | `/play` | **BUILT** (P7, extended P8) | Games, tiers, queue depths. P8: live from `lobby:{gameCode}` rather than pull-to-refresh, and round-mode games route to their table instead of a queue. |
+| Crash table | `/play/crash/:tierId` | **BUILT** (P8) | The first shipped game. Placeholder look. |
+| Wallet | `/wallet` | **BUILT** (P4) | Balance, history, interim direct-credit funding (ADR-022). |
+| Component gallery | `/_dev/gallery` | **BUILT** (P2) | Designer reference — every `ui_kit` component in every state. Hidden in production builds. |
+| Matchmaking wait | — | NOT_BUILT | P7 forms matches instantly at this scale; the waiting state is P9's, when poker tables make it real. |
+| Match result / settlement | — | NOT_BUILT | Crash settles inline on the table. A standalone summary lands with poker (P9). |
+| Everything else | — | NOT_BUILT | Poker (P9), account/RG (P10), notifications (P11), KYC (P16), payments (P17). |
 
 ### For the designer (P19 onboarding)
 

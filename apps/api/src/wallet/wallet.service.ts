@@ -274,6 +274,112 @@ export class WalletService {
   }
 
   /**
+   * Settles a **house-banked** round (ADR-024).
+   *
+   * The difference from `settle` is one line of arithmetic and one line of principle. In a
+   * pooled game players are paid out of each other's stakes, so a payout can never exceed
+   * escrow. Here the house is the counterparty: a player who cashes out at 5× is owed five
+   * times what they put in, and the surplus comes from the house float. `house_main` is
+   * therefore a *balancing* leg rather than a residual one — negative when the house pays,
+   * positive when it collects — and it is the only account in the system allowed to run
+   * below zero, by design (`docs/02-domains/wallet.md §1`).
+   *
+   * Everything else is identical to `settle` and deliberately so: idempotency is checked
+   * before any validation (a retried settlement must find the escrow already emptied and
+   * still succeed), escrow must end at exactly zero, and the whole thing is one ledger
+   * transaction.
+   */
+  async settleHouseBanked(input: {
+    matchId: string;
+    payouts: SettlementInstruction[];
+    currency?: string;
+  }): Promise<{ transactionId: string | null; replayed: boolean; houseNet: number }> {
+    const currency = input.currency ?? TEST_CURRENCY;
+    const idempotencyKey = `settlement:${input.matchId}`;
+
+    return withTransaction(this.pool, async (client) => {
+      const replay = await client.query<{ id: string }>(
+        'SELECT id FROM wallet.ledger_transactions WHERE idempotency_key = $1',
+        [idempotencyKey],
+      );
+      if (replay.rows[0]) {
+        const original = replay.rows[0].id;
+        const houseRows = await client.query<{ total: string }>(
+          `SELECT COALESCE(SUM(e.amount), 0)::text AS total
+             FROM wallet.ledger_entries e
+             JOIN wallet.accounts a ON a.id = e.account_id
+            WHERE e.tx_id = $1 AND a.type = 'house_main'`,
+          [original],
+        );
+        return {
+          transactionId: original,
+          replayed: true,
+          houseNet: Number(houseRows.rows[0]?.total ?? 0),
+        };
+      }
+
+      const escrow = await this.repository.ensureEscrowAccount(client, input.matchId, currency);
+      const { rows } = await client.query<{ amount: string }>(
+        'SELECT amount FROM wallet.balances WHERE account_id = $1 FOR UPDATE',
+        [escrow.id],
+      );
+      const escrowAmount = Number(rows[0]?.amount ?? 0);
+
+      const totalPayout = input.payouts.reduce((sum, payout) => sum + payout.amount, 0);
+      if (!Number.isSafeInteger(totalPayout) || totalPayout < 0) {
+        throw new Error(`settlement for match ${input.matchId} has a non-integer total payout`);
+      }
+
+      // Positive: the house collected losing stakes. Negative: the house paid winnings.
+      const houseNet = escrowAmount - totalPayout;
+
+      // A free-play round moves nothing at all — no stakes escrowed, nothing owed. There
+      // is no ledger transaction to write, and writing one would mean a transaction of
+      // zero-value entries, which the ledger rightly refuses.
+      if (escrowAmount === 0 && totalPayout === 0) {
+        return { transactionId: null, replayed: false, houseNet: 0 };
+      }
+
+      const entries = [];
+      if (escrowAmount !== 0) {
+        entries.push({ accountId: escrow.id, amount: -escrowAmount, currency });
+      }
+      for (const payout of input.payouts) {
+        if (payout.amount <= 0) continue;
+        const account = await this.repository.ensureUserAccount(client, payout.userId, currency);
+        entries.push({ accountId: account.id, amount: payout.amount, currency });
+      }
+      if (houseNet !== 0) {
+        const house = await this.repository.ensureHouseAccount(client, 'house_main', currency);
+        entries.push({ accountId: house.id, amount: houseNet, currency });
+      }
+
+      const result = await this.ledger.post(
+        {
+          type: 'settlement',
+          idempotencyKey,
+          refType: 'match',
+          refId: input.matchId,
+          entries,
+          audit: { actorType: 'system', action: 'wallet.settlement' },
+        },
+        client,
+      );
+
+      if (houseNet < 0) {
+        // Not an error — it is what a house-banked game losing a round looks like. Logged
+        // because the running house float is an operational number somebody has to watch,
+        // and P10/P12 turn it into an alert rather than a line in a log.
+        this.logger.log(
+          `match ${input.matchId}: house paid ${-houseNet} ${currency} net to players`,
+        );
+      }
+
+      return { ...result, houseNet };
+    });
+  }
+
+  /**
    * Reverses a transaction by posting its mirror image (rule 5: corrections are never edits).
    */
   async reverse(input: {

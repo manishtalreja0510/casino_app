@@ -33,11 +33,24 @@ class StakeTier {
   );
 }
 
+/// How a game admits players (ADR-023). Decided by the server, never inferred here.
+enum LobbyMode {
+  /// Queue for a match against other players.
+  matchmade,
+
+  /// Join the next round in a continuous loop.
+  rounds;
+
+  static LobbyMode parse(String? raw) =>
+      raw == 'rounds' ? LobbyMode.rounds : LobbyMode.matchmade;
+}
+
 class LobbyGame {
   const LobbyGame({
     required this.gameCode,
     required this.name,
     required this.enabled,
+    required this.mode,
     required this.activeMatches,
     required this.tiers,
   });
@@ -49,6 +62,9 @@ class LobbyGame {
   /// vanished with no explanation is worse than one visibly unavailable.
   final bool enabled;
 
+  /// Which entry flow this game uses. The lobby routes on it rather than on the game code.
+  final LobbyMode mode;
+
   final int activeMatches;
   final List<StakeTier> tiers;
 
@@ -56,6 +72,7 @@ class LobbyGame {
     gameCode: json['gameCode'] as String,
     name: json['name'] as String,
     enabled: json['enabled'] as bool? ?? false,
+    mode: LobbyMode.parse(json['mode'] as String?),
     activeMatches: json['activeMatches'] as int? ?? 0,
     tiers: (json['tiers'] as List<dynamic>? ?? [])
         .whereType<Map<String, dynamic>>()
