@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import type Redis from 'ioredis';
 import { REDIS } from '../platform/redis/redis.module';
 
@@ -12,31 +12,64 @@ import { REDIS } from '../platform/redis/redis.module';
  */
 @Injectable()
 export class PresenceService {
+  private readonly logger = new Logger(PresenceService.name);
+
   static readonly ttlSeconds = 60;
 
   constructor(@Inject(REDIS) private readonly redis: Redis) {}
 
   async join(room: string, userId: string, socketId: string): Promise<void> {
-    await this.redis
-      .multi()
-      .hset(PresenceService.key(room), socketId, userId)
-      .expire(PresenceService.key(room), PresenceService.ttlSeconds)
-      .exec();
+    await this.tolerate('join', () =>
+      this.redis
+        .multi()
+        .hset(PresenceService.key(room), socketId, userId)
+        .expire(PresenceService.key(room), PresenceService.ttlSeconds)
+        .exec(),
+    );
   }
 
   async leave(room: string, socketId: string): Promise<void> {
-    await this.redis.hdel(PresenceService.key(room), socketId);
+    await this.tolerate('leave', () => this.redis.hdel(PresenceService.key(room), socketId));
   }
 
   /** Distinct user ids present — a user with two devices counts once. */
   async members(room: string): Promise<string[]> {
-    const entries = await this.redis.hgetall(PresenceService.key(room));
-    return [...new Set(Object.values(entries))];
+    const entries = await this.tolerate('members', () =>
+      this.redis.hgetall(PresenceService.key(room)),
+    );
+    return entries ? [...new Set(Object.values(entries))] : [];
   }
 
   /** Refreshes the TTL for a live connection; called on heartbeat. */
   async touch(room: string): Promise<void> {
-    await this.redis.expire(PresenceService.key(room), PresenceService.ttlSeconds);
+    await this.tolerate('touch', () =>
+      this.redis.expire(PresenceService.key(room), PresenceService.ttlSeconds),
+    );
+  }
+
+  /**
+   * Runs a presence write, tolerating a Redis that will not take it.
+   *
+   * Presence is a hint (see the class comment) — losing an entry costs a stale roster row
+   * until its TTL expires, and nothing else. Every consumer must tolerate Redis being
+   * unavailable (rule 7), and this one had not been: with the offline queue deliberately
+   * off, a command issued while the client is down throws, and `leave` is called from the
+   * gateway's disconnect handler — which runs *during shutdown*, after the client has been
+   * closed. The result was an unhandled rejection escaping app teardown and failing
+   * whichever test suite happened to be running next.
+   *
+   * Returns `null` when the operation could not be performed, so a caller that needs an
+   * answer can tell "empty" from "unknown".
+   */
+  private async tolerate<T>(operation: string, work: () => Promise<T>): Promise<T | null> {
+    try {
+      return await work();
+    } catch (error) {
+      this.logger.warn(
+        `presence ${operation} unavailable: ${error instanceof Error ? error.message : 'unknown'}`,
+      );
+      return null;
+    }
   }
 
   private static key(room: string): string {

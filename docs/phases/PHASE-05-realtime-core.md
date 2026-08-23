@@ -118,7 +118,7 @@ As previous phases, plus the two-instance resume test passing.
 ## 24. Technical debt
 | Item | Impact | Payoff |
 |---|---|---|
-| Replay buffer is room-wide, not per recipient | Must change before hidden information exists | P6, before poker (P9) |
+| ~~Replay buffer is room-wide, not per recipient~~ | **PAID (P9 prerequisite, 2026-08-23).** Solved by routing rather than by per-recipient buffers: a private event goes to its owner's `user:` room, which has one member and its own buffer, so a shared buffer never holds one. `RealtimeService.deliver` is the single delivery path; adversarial resume tests in `hidden-info.int-spec.ts` | — |
 | No per-event rate limiting on the socket | A chatty client is unbounded | P6/P7, when real actions exist |
 | Presence TTL is the only ghost cleanup | Stale entries for up to 60 s after a hard kill | P14 |
 | Ring buffer size is a constant, not per-room config | A very busy table could outrun 512 events | P9/P14, measured |

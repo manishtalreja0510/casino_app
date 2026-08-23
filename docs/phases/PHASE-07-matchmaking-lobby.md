@@ -124,7 +124,7 @@ Also fixed: `forRoutes('*')` is deprecated under Express 5 and warned on every b
 | Startup recovery replays every in-flight match serially | Slow boot with a large backlog (126 matches took seconds) | P14 — parallelise or defer to a worker |
 | Formation audit (`game.formations`) is written but never read | No operator view of failed formations | P12 |
 | Seat reservation primitive outstanding | Poker cannot hold a seat during buy-in | P9 |
-| Realtime replay buffer still room-wide (from P5) | Would leak per-player events on resume | **Must precede P9** |
+| ~~Realtime replay buffer still room-wide (from P5)~~ | **PAID 2026-08-23**, before P9: private events are routed to their owner's room rather than filtered inside a shared one (ADR-023 §4b) | — |
 
 ## 25. Next-phase dependencies
 P8 and P9 create matches through matchmaking; P9 uses seat reservation for tables.

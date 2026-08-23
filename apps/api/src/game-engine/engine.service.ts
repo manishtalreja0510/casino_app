@@ -338,10 +338,14 @@ export class EngineService {
       const terminal = definition.isTerminal(reduced.state as never);
       if (terminal) await this.matches.setStatus(client, matchId, 'settling');
 
-      return { match, players, definition, reduced, terminal };
+      return { match, players, definition, reduced, terminal, seq };
     });
 
     await this.applyTimer(matchId, result.reduced);
+    // Events first, then the state snapshot. Events say what happened; `game:state` is the
+    // full authoritative view, so applying it last means the last thing a client holds is
+    // the truth rather than an inference from a notification.
+    await this.deliverEvents(matchId, result.reduced, result.players, result.seq);
     await this.broadcastState(matchId);
     await this.notifyChanged(matchId);
     if (result.terminal) await this.settle(matchId);
@@ -378,11 +382,12 @@ export class EngineService {
 
       const terminal = definition.isTerminal(reduced.state as never);
       if (terminal) await this.matches.setStatus(client, matchId, 'settling');
-      return { reduced, terminal };
+      return { reduced, terminal, players, seq };
     });
 
     if (!result) return;
     await this.applyTimer(matchId, result.reduced);
+    await this.deliverEvents(matchId, result.reduced, result.players, result.seq);
     await this.broadcastState(matchId);
     await this.notifyChanged(matchId);
     if (result.terminal) await this.settle(matchId);
@@ -716,6 +721,27 @@ export class EngineService {
     this.timers.schedule(`${matchId}:${timer.id}`, timer.delayMs, () =>
       this.handleTimeout(matchId, timer.id),
     );
+  }
+
+  /**
+   * Hands a reducer's events to the realtime layer.
+   *
+   * Called only after the transaction has committed: an action that was rejected or rolled
+   * back must never have announced itself. The realtime layer decides routing — public
+   * events to the match room, private ones to their owner's room — because that is what
+   * keeps a private event out of the shared replay buffer (ADR-023 §4, PHASE-09).
+   */
+  private async deliverEvents(
+    matchId: string,
+    reduced: ReduceResult<never>,
+    players: GamePlayer[],
+    matchSeq: number,
+  ): Promise<void> {
+    if (reduced.events.length === 0) return;
+    await this.realtime.deliver(matchId, reduced.events, {
+      matchSeq,
+      participants: players.map((player) => player.userId),
+    });
   }
 
   /** Sends each participant their own view — never a shared blob (rule 2). */

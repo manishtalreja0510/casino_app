@@ -18,7 +18,7 @@ Update this file in the same PR as any status change. BLOCKED entries must name 
 | P6 | Game engine & contract | COMPLETE | 2026-08-23 · `phases/PHASE-06-game-engine.md` |
 | P7 | Matchmaking & lobby | COMPLETE | 2026-08-23 · `phases/PHASE-07-matchmaking-lobby.md` |
 | P8 | Casino game #1 — Crash (test currency) | COMPLETE | 2026-08-23 · `phases/PHASE-08-casino-game-crash.md` · OQ-05 decided: Crash · ADR-023, ADR-024 |
-| P9 | Poker (test currency) | NOT_STARTED | P7/P8 complete; variant = OQ-07 (rec: NLHE cash) — needs a decision. **Blocker to clear first:** the realtime replay buffer is room-wide, so a resume could deliver another player's events (PHASE-05 §24) — a hole-card leak in poker |
+| P9 | Poker (test currency) | IMPLEMENTING | 2026-08-23 · `phases/PHASE-09-poker.md` · blocker cleared: private events are routed, not filtered (ADR-023 §4b, `hidden-info.int-spec.ts`) |
 | P10 | Risk & responsible gaming v1 | NOT_STARTED | needs P8 or P9 |
 | P11 | Notifications | NOT_STARTED | needs P5; transport = OQ-09 |
 | P12 | Admin panel v1 | NOT_STARTED | needs P4 (risk queues need P10) |

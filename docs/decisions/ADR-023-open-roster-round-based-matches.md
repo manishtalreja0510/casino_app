@@ -62,6 +62,23 @@ back into memory. `ReduceResult.timer` still covers deadlines a move creates.
 of the shape `round:{tierId}` are public to authenticated players and carry only this. A
 game that defines no public view broadcasts nothing, which is the safe default.
 
+**4b. Private events are routed, not filtered** (added 2026-08-23, before P9).
+`GameEventOut.onlyTo` was declared in P6 and consumed by nothing: the engine recorded
+reducer events in the log and never emitted them. Implementing it naively — emitting to the
+addressed sockets inside the match room — would have leaked, because sequencing and the
+replay buffer are **per room**: anything placed in `match:{id}` can be replayed to any
+participant who reconnects, long after the moment it was "addressed" to one player. That
+failure is invisible live and appears only on resume.
+
+So `RealtimeService.deliver` is the single path a reducer's events take to a client, and
+privacy is expressed as **routing**: public events go to `match:{id}`, private ones to
+`user:{ownerId}` — a room with one member and its own buffer. There is no filter to forget.
+Three rules go with it: `onlyTo: undefined` means public while `onlyTo: []` means *nobody*
+(the opposite convention would broadcast hidden information exactly when a game computed an
+empty recipient list); a recipient outside the match roster is refused and logged; and every
+event carries the engine's `matchSeq` so a client can order the two room streams it now
+receives against each other. Room `seq` stays the transport-level gap detector.
+
 **5. `GamePlayer.meta`** — per-player data fixed at join time (Crash's auto-cash-out
 target; poker's sit-out state in P9). It belongs to the roster rather than to state because
 it is decided before `init` runs, and it is replayed with the roster.
