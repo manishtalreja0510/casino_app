@@ -1,0 +1,14 @@
+# gitleaks configuration — secret scanning runs on every push (rule 14).
+title = "casino_app secret scanning"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Local-only, non-secret development defaults (ADR-021). These are throwaway loopback credentials."
+paths = [
+  '''\.env\.example$''',
+  '''\.example\.json$''',
+  '''infra/docker-compose\.dev\.yml$''',
+  '''docs/.*''',
+]

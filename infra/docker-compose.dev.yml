@@ -1,0 +1,43 @@
+# Local development stack — free, loopback-only, zero cloud dependency (ADR-021).
+# Credentials here are throwaway local values, NOT a template for any real environment:
+# staging/prod secrets come from the secret manager at deploy time (ADR-011, rule 14).
+#
+#   docker compose -f infra/docker-compose.dev.yml up -d
+#   docker compose -f infra/docker-compose.dev.yml down -v
+#
+# If the Docker daemon is unavailable, use the native fallback: `pnpm dev:services`.
+
+name: casino-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:5432:5432'
+    environment:
+      POSTGRES_DB: casino_dev
+      POSTGRES_USER: casino_dev
+      POSTGRES_PASSWORD: casino_dev_local_only
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U casino_dev -d casino_dev']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:6379:6379'
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:

@@ -4,6 +4,20 @@
 
 **Why this count:** phases are cut for manageable scope, clear dependencies, independent testability, and low blast radius — a phase should be revertible/haltable without stranding half-built money paths.
 
+## Owner decisions applied (2026-08-23)
+
+These amend the phases below; the phase text stays as the full design record.
+
+| # | Decision | Roadmap effect |
+|---|---|---|
+| OQ-01 | Licensing owned by a **separate team**; engineering does not wait on it | **P15 is no longer an engineering gate** — it becomes a hand-off checkpoint for that team's answers. `compliance.real_money_enabled` still defaults OFF (rule 11); geo-fencing still built (rule 13); P18 still needs the license before it can complete. |
+| OQ-02 | Payments are **static/direct-credit** for now (user submits amount → credited) | Funding moves **into P4** as a flag-gated wallet operation through the normal ledger (ADR-022). **P17 (real PSP) is parked** until a PSP exists. |
+| OQ-03 | **KYC verification skipped for now**, design retained | **P16 is parked.** All accounts run at level L0; the level model stays as configuration so P16 slots in without touching call sites. |
+| — | **Distribution/APK channel owned by a separate team** | **P13 narrows** to the server-side half we must own: min-version policy + `UPDATE_REQUIRED` enforcement (rule 17 is non-negotiable and stays with the API). APK hosting, signing pipeline, and the download channel transfer to that team; we supply the contract they build against. |
+| OQ-06 | AWS + Secrets Manager confirmed as target, **with a local-first mandate** | **Development runs free on localhost** — Docker Compose (Postgres + Redis) primary, native services fallback, no cloud account needed, no cloud spend until explicitly approved (ADR-021). Applies to P0 onward and to CI. |
+
+**Net effect on sequencing:** the critical path is now P0 → P1 → P2 → P3 → P4 → P5 → P6 → P7 → P8/P9 → P10 → P12 → P14, with P13 reduced, and P15/P16/P17 parked pending the other teams. Nothing about the money rules relaxes: the ledger, idempotency, audit, and compliance-gate rules apply to test currency exactly as they would to real money.
+
 ## Dependency graph
 
 ```
@@ -44,11 +58,11 @@ Rules encoded in the ordering:
 | P10 | Risk & responsible gaming v1 | P8 or P9 | — | High | High |
 | P11 | Notifications | P5 | OQ-09 (rec. exists) | Low | Medium |
 | P12 | Admin panel v1 | P4; risk queues need P10 | — | Medium | Medium |
-| P13 | Distribution & updates | P2; enforcement needs P1 | — | High | Medium |
+| P13 | Distribution & updates (**narrowed** — server-side enforcement only; channel owned by separate team) | P1 | — | Medium | Low |
 | P14 | Hardening & load | P8–P13 | — | High | High |
-| P15 | Compliance gate closure | business track | **OQ-01/02/03/11** | Critical | — (decision) |
-| P16 | KYC integration | P15 | OQ-03 decided | High | Medium |
-| P17 | Payments (PSP) | P15, P16 | OQ-02 decided | Critical | High |
+| P15 | Compliance hand-off checkpoint (**not an engineering gate**) | separate licensing team | external team | Critical | — (checkpoint) |
+| P16 | KYC integration (**PARKED** — verification skipped for now) | P15 | owner decision to resume | High | Medium |
+| P17 | Payments — real PSP (**PARKED**; direct-credit interim in P4) | P15, P16 | PSP selection | Critical | High |
 | P18 | Real-money enablement & launch | P14–P17 | all gates green | Critical | High |
 | P19 | Design integration | P2 baseline; screens as built | **designer onboarding** | Medium | Medium |
 | P20 | iOS (unscheduled) | P18 learnings | **OQ-04** | High | High |

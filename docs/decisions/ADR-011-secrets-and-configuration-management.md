@@ -1,6 +1,6 @@
 # ADR-011: Secrets & Configuration Management
 
-**Status:** PROPOSED (blocked on OQ-06 — cloud/secret-manager choice needs owner confirmation before infra spend)
+**Status:** ACCEPTED (2026-08-23 — AWS + AWS Secrets Manager confirmed by owner via OQ-06; see ADR-021 for the local-first development mandate that applies until cloud provisioning is approved)
 **Date:** 2026-08-23
 
 ## Context

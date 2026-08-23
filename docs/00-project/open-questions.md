@@ -7,7 +7,9 @@ Every UNDECIDED item lives here with a stable ID (`OQ-nn`). Docs and ADRs refere
 ---
 
 ## OQ-01 — Jurisdiction(s) and licensing regime 🔴 LAUNCH-BLOCKING
-**Status:** OPEN · **Owner:** business + qualified gaming counsel · **Blocks:** P15→P18, OQ-02, OQ-03, OQ-08 · **ADR:** ADR-016 (RNG cert lab), `docs/06-compliance/*`
+**Status:** DELEGATED (2026-08-23, owner) — owned by a separate licensing/compliance team; **not an engineering blocker for development** · **Still blocks:** P18 real-money launch · **ADR:** ADR-016 (RNG cert lab), `docs/06-compliance/*`
+
+> **Decision (2026-08-23).** A separate team handles all licensing. Engineering does **not** wait on it and does **not** attempt to answer it. What this changes: P15 is no longer an engineering gate phase — it becomes a hand-off checkpoint where that team's answers land. What it does **not** change: `compliance.real_money_enabled` stays OFF by default (rule 11), geo-fencing capability is still built (rule 13), and P18 real-money enablement still cannot complete until the licensing team delivers jurisdiction + license. All jurisdiction-dependent values remain configuration, never hardcoded.
 
 **Question.** Which market(s) will the platform legally operate in, and under which license?
 
@@ -26,14 +28,18 @@ Every UNDECIDED item lives here with a stable ID (`OQ-nn`). Docs and ADRs refere
 
 ---
 
-## OQ-02 — Payment gateway / PSP 🔴 blocked on OQ-01
-**Status:** OPEN · **Blocks:** P17 · **ADR:** ADR-014 (PROPOSED)
+## OQ-02 — Payment gateway / PSP 🟡 deferred; interim path decided
+**Status:** DEFERRED (2026-08-23, owner) — PSP choice still open; **development uses direct-credit funding** · **Blocks:** P17 only · **ADR:** ADR-014 (PROPOSED), ADR-022 (ACCEPTED, interim)
+
+> **Decision (2026-08-23).** Until a PSP is chosen, funding is **static/direct-credit**: the user submits an amount and it is credited straight to their wallet. This is a real ledger transaction (double-entry, idempotent, audited — rules 4-6 still apply in full); only the *external money movement* is skipped. Implemented in P4 behind the `payments.dev_direct_credit` flag, which is **force-disabled whenever `compliance.real_money_enabled` is ON** — see ADR-022. `PaymentProviderPort` still exists so the real PSP slots in at P17 without reshaping the wallet.
 
 Which PSP(s) for deposits and withdrawals? Gambling is a high-risk merchant category: mainstream PSPs (Stripe, Adyen standard accounts) exclude it; realistic options are gambling-specialist PSPs and aggregators, which are gated on the license (OQ-01). Multi-PSP is likely eventually (redundancy, per-market methods).
 **Engineering stance:** `PaymentProviderPort` abstraction (`docs/02-domains/payments.md`); orchestration, ledger integration, webhook handling, and reconciliation are PSP-agnostic and built/tested against a fake provider on test currency. **Recommendation:** shortlist only after OQ-01; require: license acceptance, payout API, signed webhooks, statement/settlement file API.
 
-## OQ-03 — KYC method & provider 🔴 blocked on OQ-01
-**Status:** OPEN · **Blocks:** P16 · **ADR:** ADR-015 (PROPOSED)
+## OQ-03 — KYC method & provider 🟡 deferred, verification skipped for now
+**Status:** DEFERRED (2026-08-23, owner) — no KYC built now; design retained · **Blocks:** P16 only · **ADR:** ADR-015 (PROPOSED)
+
+> **Decision (2026-08-23).** Identity verification is **skipped for now**; the documented design stays as-is for when it returns. Engineering impact: every account operates at level **L0**; the L0/L1/L2 level model stays in the domain model as configuration so that level checks are present (and trivially satisfied) rather than absent — P16 then swaps in a real provider adapter without touching call sites. Age verification therefore has no technical enforcement until P16; recorded here so it cannot be forgotten before real money (rule 12).
 
 Which identity-verification provider and which verification depth (doc scan + liveness vs database checks vs both), driven by license requirements. **Engineering stance:** `KycProviderPort` + level model L0/L1/L2 with jurisdiction-configurable requirements (`docs/02-domains/kyc-verification.md`). **Recommendation:** decide with OQ-01; evaluate on supported documents for target markets, sandbox quality, webhook model, PEP/sanctions screening bundling, price per check.
 
@@ -61,8 +67,10 @@ Candidates (all multiplayer-capable, fast rounds, house-banked or pooled):
 | Andar Bahar / Teen Patti | Regional appeal but tied to markets that ban RMG (see OQ-01) |
 **Recommendation:** Crash — real-time and social (fits "against strangers"), trivially provably fair, and exercises the whole contract (timers, rounds, concurrent players). Decide by P8 planning; P6/P7 don't depend on it.
 
-## OQ-06 — Secret manager + cloud/hosting provider 🟡 needs owner confirmation
-**Status:** OPEN — recommendation made, awaiting confirmation · **Blocks:** parts of P0/P1 infra provisioning · **ADR:** ADR-011 (PROPOSED)
+## OQ-06 — Secret manager + cloud/hosting provider 🟢 confirmed, with local-first mandate
+**Status:** DECIDED (2026-08-23, owner) · **ADR:** ADR-011 (ACCEPTED), ADR-021 (ACCEPTED, local-first)
+
+> **Decision (2026-08-23).** AWS + AWS Secrets Manager confirmed as the eventual hosting/secrets target, **with a hard local-first mandate**: for the whole development period the stack must run **free on localhost** — zero cloud dependency, zero cloud spend, no account required to develop or test. Docker Compose (Postgres + Redis) is the primary local path, with native local services as a documented fallback. Cloud provisioning happens only when explicitly approved; until then everything infra-touching stays provider-agnostic (containers + env-var injection). See ADR-021.
 
 ADR-011 compares HashiCorp Vault vs cloud-native secret managers, and hosting options. **Recommendation:** AWS (ECS Fargate → EKS later, RDS Postgres, ElastiCache Redis) + AWS Secrets Manager; Cloudflare in front as WAF/CDN. Vault is more powerful (dynamic DB creds, transit encryption) but is an ops burden a small team shouldn't carry at start. **Confirm before infra spend.** Until confirmed, everything infra-touching stays provider-agnostic (containers + env-var injection).
 

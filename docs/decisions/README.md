@@ -58,7 +58,7 @@ Relative paths to related docs, ADR-nnn, OQ-nn, phases P-nn.
 | [ADR-008](ADR-008-double-entry-ledger.md) | Double-entry financial ledger | ACCEPTED |
 | [ADR-009](ADR-009-modular-game-contract.md) | Modular game contract (`GameDefinition`) | ACCEPTED |
 | [ADR-010](ADR-010-testing-strategy.md) | Testing strategy | ACCEPTED |
-| [ADR-011](ADR-011-secrets-and-configuration-management.md) | Secrets & config management + secret-manager/cloud comparison | PROPOSED (OQ-06) |
+| [ADR-011](ADR-011-secrets-and-configuration-management.md) | Secrets & config management + secret-manager/cloud comparison | ACCEPTED (OQ-06 decided) |
 | [ADR-012](ADR-012-environment-and-flavor-strategy.md) | Environment & flavor strategy | ACCEPTED |
 | [ADR-013](ADR-013-network-security-model.md) | Network security (pinning + rotation, token model, request signing) | ACCEPTED |
 | [ADR-014](ADR-014-payment-provider-abstraction.md) | Payment-provider abstraction | PROPOSED (OQ-02) |
@@ -68,3 +68,5 @@ Relative paths to related docs, ADR-nnn, OQ-nn, phases P-nn.
 | [ADR-018](ADR-018-fraud-risk-engine-approach.md) | Fraud/risk engine approach | ACCEPTED |
 | [ADR-019](ADR-019-placeholder-first-ui.md) | Placeholder-first UI & design-token migration | ACCEPTED |
 | [ADR-020](ADR-020-data-access-layer.md) | Data access layer (Drizzle, SQL-first migrations) | ACCEPTED |
+| [ADR-021](ADR-021-local-first-development-environment.md) | Local-first, zero-cost development environment | ACCEPTED |
+| [ADR-022](ADR-022-interim-direct-credit-funding.md) | Interim direct-credit funding (no PSP during development) | ACCEPTED (interim, superseded at P17) |

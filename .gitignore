@@ -1,0 +1,49 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build output
+dist/
+build/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# ---- secrets & local config (rule 14: never commit real values) ----
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.local
+secrets/
+# Flutter build-time config (--dart-define-from-file) — only .example templates are committed
+apps/mobile/config/*.json
+!apps/mobile/config/*.example.json
+# signing material — never in the repo under any circumstances
+*.keystore
+*.jks
+*.p12
+*.pem
+*.key
+key.properties
+
+# flutter / dart
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+apps/mobile/**/build/
+apps/mobile/.pub-cache/
+apps/mobile/pubspec.lock
+
+# editors / os
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+*.swp
+
+# logs & runtime
+*.log
+tmp/
+.dev-services/

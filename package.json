@@ -1,0 +1,29 @@
+{
+  "name": "casino-app",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "engines": { "node": ">=22 <23", "pnpm": ">=10" },
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "dev:services": "bash scripts/dev-services.sh start",
+    "dev:services:stop": "bash scripts/dev-services.sh stop",
+    "dev:services:status": "bash scripts/dev-services.sh status",
+    "bootstrap": "bash scripts/bootstrap.sh"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.16.0",
+    "eslint": "^9.16.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.0"
+  }
+}
