@@ -35,12 +35,23 @@ docs/                     architecture, domains, security, compliance, phases
 
 | Command | Does |
 |---|---|
-| `pnpm verify` | lint + typecheck + test + build (what CI runs) |
+| `pnpm verify:all` | **the release gate** — lint, typecheck, unit + integration tests, build, migrations, secret scan |
+| `pnpm verify` | lint + typecheck + test + build (fast inner loop) |
 | `pnpm test` | unit tests across workspaces |
 | `pnpm --filter @casino/api test:int` | integration tests against real PostgreSQL + Redis |
 | `pnpm --filter @casino/api migrate` | apply database migrations |
 | `pnpm dev:services` / `:stop` / `:status` | local Postgres + Redis |
 | `pnpm format` | Prettier write |
+
+## Verification
+
+GitHub Actions is **disabled** (Actions minutes near the account limit — see
+`.github/workflows/README.md`). **`pnpm verify:all` is the gate**: it runs the same checks
+the pipeline did, locally and for free. Run it before every push. The standard is
+unchanged — nothing ships with failing tests (rule 18).
+
+Secret scanning needs `gitleaks` on PATH; the script says loudly when it is missing rather
+than passing silently.
 
 ## Working on this project
 

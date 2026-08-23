@@ -3,7 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "packageManager": "pnpm@10.33.0",
-  "engines": { "node": ">=22 <23", "pnpm": ">=10" },
+  "engines": {
+    "node": ">=22 <23",
+    "pnpm": ">=10"
+  },
   "scripts": {
     "build": "turbo run build",
     "test": "turbo run test",
@@ -15,7 +18,8 @@
     "dev:services": "bash scripts/dev-services.sh start",
     "dev:services:stop": "bash scripts/dev-services.sh stop",
     "dev:services:status": "bash scripts/dev-services.sh status",
-    "bootstrap": "bash scripts/bootstrap.sh"
+    "bootstrap": "bash scripts/bootstrap.sh",
+    "verify:all": "bash scripts/verify-all.sh"
   },
   "devDependencies": {
     "@eslint/js": "^9.16.0",
