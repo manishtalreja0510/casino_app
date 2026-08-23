@@ -11,9 +11,11 @@ const base = {
   DATABASE_URL: 'postgresql://casino_dev:local@127.0.0.1:5432/casino_dev',
   REDIS_URL: 'redis://127.0.0.1:6379',
   // Since P3 the ES256 key pair is required config: an API that cannot sign tokens must
-  // not boot. Values here are structurally valid placeholders, not usable keys.
-  JWT_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\n'.padEnd(140, 'x') + '\n-----END PRIVATE KEY-----',
-  JWT_PUBLIC_KEY: '-----BEGIN PUBLIC KEY-----\n'.padEnd(120, 'x') + '\n-----END PUBLIC KEY-----',
+  // not boot. These are length placeholders only — deliberately NOT shaped like PEM, so
+  // neither a reader nor a secret scanner can mistake them for key material. The schema
+  // checks length here; real key parsing happens in TokenService, covered by jwt.spec.ts.
+  JWT_PRIVATE_KEY: 'test-private-key-placeholder-'.padEnd(140, 'x'),
+  JWT_PUBLIC_KEY: 'test-public-key-placeholder-'.padEnd(120, 'x'),
 };
 
 describe('environment validation (fail fast)', () => {

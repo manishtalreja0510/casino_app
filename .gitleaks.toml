@@ -6,6 +6,15 @@ useDefault = true
 
 [allowlist]
 description = "Local-only, non-secret development defaults (ADR-021). These are throwaway loopback credentials."
+
+# One historical false positive, pinned by fingerprint rather than by rule.
+# Commit 4882f06 contains a TEST placeholder built as
+#   '-----BEGIN PRIVATE KEY-----\n'.padEnd(140, 'x')
+# i.e. PEM armour followed by literal 'x' characters — no key material. The working tree
+# no longer produces a PEM-shaped placeholder. Deliberately NOT allowlisting the
+# `private-key` rule or that file wholesale: a real key committed there must still fail.
+commits = ["4882f0673844e7aacadd8aa905646cc6a90c37a1"]
+
 paths = [
   '''\.env\.example$''',
   '''\.example\.json$''',

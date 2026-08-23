@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 import 'api_error.dart';
 import 'auth_models.dart';
 import 'health.dart';
+import 'money.dart';
+import 'wallet_models.dart';
 
 /// REST client for the casino_app API.
 ///
@@ -92,6 +94,33 @@ class CasinoApiClient {
   }
 
   Future<void> revokeAllSessions() async => _post('/auth/sessions/revoke', {'all': true});
+
+  // ---- wallet (P4) ----
+
+  Future<Money> balance() async {
+    final json = await _get('/wallet/balance');
+    return Money.fromJson(json['balance'] as Map<String, dynamic>);
+  }
+
+  Future<List<WalletTransaction>> transactions() async {
+    final json = await _get('/wallet/transactions');
+    return (json['transactions'] as List<dynamic>)
+        .whereType<Map<String, dynamic>>()
+        .map(WalletTransaction.fromJson)
+        .toList();
+  }
+
+  /// Interim direct-credit funding (ADR-022).
+  ///
+  /// [idempotencyKey] must be generated once per user intent and REUSED on retry — that
+  /// is what makes a timeout safe to retry without crediting twice (rule 6).
+  Future<Money> addFunds({required int amountMinorUnits, required String idempotencyKey}) async {
+    final json = await _post('/wallet/funding', {
+      'amount': amountMinorUnits,
+      'idempotencyKey': idempotencyKey,
+    });
+    return Money.fromJson(json['balance'] as Map<String, dynamic>);
+  }
 
   Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body) async {
     final uri = Uri.parse('\$baseUrl\$path');

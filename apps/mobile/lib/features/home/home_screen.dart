@@ -6,6 +6,7 @@ import 'package:ui_kit/ui_kit.dart';
 
 import '../../app/providers.dart';
 import '../../app/router.dart';
+import '../wallet/wallet_providers.dart';
 
 /// Placeholder home screen.
 ///
@@ -87,10 +88,27 @@ class HomeScreen extends ConsumerWidget {
                     // Test-currency balance is server-owned; this is a placeholder value
                     // formatted from integer minor units, never computed here (rule 4).
                     AppCard(
-                      child: BalanceDisplay(
-                        label: 'Balance',
-                        formattedAmount: const Money(amount: 0, currency: Money.testCurrency).format(),
-                        large: true,
+                      onTap: () => context.push(AppRoutes.wallet),
+                      child: Consumer(
+                        builder: (context, ref, _) {
+                          final balance = ref.watch(balanceProvider);
+                          return balance.when(
+                            loading: () => const AppLoadingState(),
+                            error: (_, __) => BalanceDisplay(
+                              label: 'Balance',
+                              formattedAmount: const Money(
+                                amount: 0,
+                                currency: Money.testCurrency,
+                              ).format(),
+                              large: true,
+                            ),
+                            data: (money) => BalanceDisplay(
+                              label: 'Balance',
+                              formattedAmount: money.format(),
+                              large: true,
+                            ),
+                          );
+                        },
                       ),
                     ),
                     const Spacer(),

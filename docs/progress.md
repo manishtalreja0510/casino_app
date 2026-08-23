@@ -13,8 +13,8 @@ Update this file in the same PR as any status change. BLOCKED entries must name 
 | P1 | Backend platform core | COMPLETE | 2026-08-23 · `phases/PHASE-01-backend-platform-core.md` |
 | P2 | Flutter platform core | COMPLETE | 2026-08-23 · `phases/PHASE-02-flutter-platform-core.md` (Android build unverified — see §23) |
 | P3 | Auth & identity | COMPLETE | 2026-08-23 · `phases/PHASE-03-auth-identity.md` |
-| P4 | Wallet & ledger (test currency) | IMPLEMENTING | Plan: `phases/PHASE-04-wallet-ledger.md` |
-| P5 | Real-time core | NOT_STARTED | needs P3 |
+| P4 | Wallet & ledger (test currency) | COMPLETE | 2026-08-23 · `phases/PHASE-04-wallet-ledger.md` |
+| P5 | Real-time core | IMPLEMENTING | Plan: `phases/PHASE-05-realtime-core.md` |
 | P6 | Game engine & contract | NOT_STARTED | needs P4, P5 |
 | P7 | Matchmaking & lobby | NOT_STARTED | needs P6 |
 | P8 | Casino game #1 (test currency) | NOT_STARTED | needs P7; game choice = OQ-05 (rec: Crash) |

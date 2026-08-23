@@ -10,3 +10,4 @@ export 'src/api_error.dart';
 export 'src/auth_models.dart';
 export 'src/health.dart';
 export 'src/money.dart';
+export 'src/wallet_models.dart';

@@ -1,0 +1,295 @@
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import type { Pool } from 'pg';
+import { PG_POOL } from '../platform/database/database.module';
+import { withTransaction } from '../platform/database/transaction';
+import { FlagsService } from '../platform/flags/flags.service';
+import { FlagKey } from '../platform/flags/flag-keys';
+import { LedgerService } from './ledger.service';
+import { WalletRepository, type TransactionSummary } from './wallet.repository';
+import {
+  CurrencyMismatchError,
+  FundingDisabledError,
+  FundingLimitExceededError,
+  InsufficientFundsError,
+} from './wallet.errors';
+
+export const TEST_CURRENCY = 'TST';
+
+/** Caps on the interim direct-credit path (ADR-022) — abuse signal for P10, not just a limit. */
+export const FUNDING_LIMITS = {
+  maxPerRequest: 1_000_00,
+  maxPer24Hours: 5_000_00,
+} as const;
+
+export interface SettlementInstruction {
+  userId: string;
+  /** Positive: the player is paid this much from escrow. */
+  amount: number;
+}
+
+/**
+ * Wallet domain operations (`docs/02-domains/wallet.md`).
+ *
+ * Every method here is a thin, auditable composition of `LedgerService.post()`. Nothing
+ * in this class computes a balance by hand or writes to the ledger directly — and games
+ * never call it at all: settlement flows engine → wallet (rule 10).
+ */
+@Injectable()
+export class WalletService {
+  private readonly logger = new Logger(WalletService.name);
+
+  constructor(
+    @Inject(PG_POOL) private readonly pool: Pool,
+    private readonly ledger: LedgerService,
+    private readonly repository: WalletRepository,
+    private readonly flags: FlagsService,
+  ) {}
+
+  async getBalance(userId: string, currency = TEST_CURRENCY): Promise<{ amount: number; currency: string }> {
+    const account = await this.repository.findUserAccount(userId, currency);
+    if (!account) return { amount: 0, currency };
+    const balance = await this.repository.getBalance(account.id);
+    return { amount: balance?.amount ?? 0, currency };
+  }
+
+  async listTransactions(
+    userId: string,
+    options: { limit?: number; before?: Date } = {},
+  ): Promise<TransactionSummary[]> {
+    const account = await this.repository.findUserAccount(userId, TEST_CURRENCY);
+    if (!account) return [];
+    return this.repository.listTransactions(account.id, {
+      limit: Math.min(options.limit ?? 50, 100),
+      ...(options.before ? { before: options.before } : {}),
+    });
+  }
+
+  /**
+   * Interim direct-credit funding (ADR-022, OQ-02): the user names an amount and it is
+   * credited from a house funding account.
+   *
+   * **Double gate.** The operation requires its own flag to be ON *and* the compliance
+   * gate to be OFF. It creates money by construction, so it must be unreachable the
+   * moment real money is enabled — the check is here in the service, not merely a flag
+   * default, and `funding_disabled_by_compliance_gate` is asserted by a test.
+   */
+  async addFunds(input: {
+    userId: string;
+    amount: number;
+    idempotencyKey: string;
+    currency?: string;
+  }): Promise<{ transactionId: string; replayed: boolean; balance: number }> {
+    const currency = input.currency ?? TEST_CURRENCY;
+    if (currency !== TEST_CURRENCY) throw new CurrencyMismatchError();
+
+    const [fundingEnabled, realMoneyEnabled] = await Promise.all([
+      this.flags.isEnabled(FlagKey.DEV_DIRECT_CREDIT),
+      this.flags.isRealMoneyEnabled(),
+    ]);
+    if (!fundingEnabled || realMoneyEnabled) {
+      if (realMoneyEnabled) {
+        this.logger.error(
+          'direct-credit funding attempted while the compliance gate is ON — refused (ADR-022)',
+        );
+      }
+      throw new FundingDisabledError();
+    }
+
+    if (!Number.isSafeInteger(input.amount) || input.amount <= 0) {
+      throw new CurrencyMismatchError();
+    }
+    if (input.amount > FUNDING_LIMITS.maxPerRequest) {
+      throw new FundingLimitExceededError(0);
+    }
+
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recent = await this.repository.sumFundingSince(input.userId, since);
+    if (recent + input.amount > FUNDING_LIMITS.maxPer24Hours) {
+      throw new FundingLimitExceededError(24);
+    }
+
+    const result = await withTransaction(this.pool, async (client) => {
+      const userAccount = await this.repository.ensureUserAccount(client, input.userId, currency);
+      const houseAccount = await this.repository.ensureHouseAccount(client, 'house_dev_funding', currency);
+
+      return this.ledger.post(
+        {
+          type: 'funding',
+          idempotencyKey: input.idempotencyKey,
+          entries: [
+            { accountId: houseAccount.id, amount: -input.amount, currency },
+            { accountId: userAccount.id, amount: input.amount, currency },
+          ],
+          audit: { actorType: 'user', actorId: input.userId, action: 'wallet.funding' },
+        },
+        client,
+      );
+    });
+
+    const balance = await this.getBalance(input.userId, currency);
+    return { ...result, balance: balance.amount };
+  }
+
+  /**
+   * Moves a buy-in from a player's wallet into the match escrow.
+   *
+   * Overdraw is prevented by the database (`balances` CHECK via trigger), not by reading
+   * the balance first — a read-then-write check is a race, and this is money.
+   */
+  async buyIn(input: {
+    userId: string;
+    matchId: string;
+    amount: number;
+    currency?: string;
+  }): Promise<{ transactionId: string; replayed: boolean }> {
+    const currency = input.currency ?? TEST_CURRENCY;
+    if (!Number.isSafeInteger(input.amount) || input.amount <= 0) throw new CurrencyMismatchError();
+
+    try {
+      return await withTransaction(this.pool, async (client) => {
+        const userAccount = await this.repository.ensureUserAccount(client, input.userId, currency);
+        const escrow = await this.repository.ensureEscrowAccount(client, input.matchId, currency);
+
+        return this.ledger.post(
+          {
+            type: 'buy_in',
+            // Idempotent per player per match: a retried join cannot charge twice.
+            idempotencyKey: `buy_in:${input.matchId}:${input.userId}`,
+            refType: 'match',
+            refId: input.matchId,
+            entries: [
+              { accountId: userAccount.id, amount: -input.amount, currency },
+              { accountId: escrow.id, amount: input.amount, currency },
+            ],
+            audit: { actorType: 'user', actorId: input.userId, action: 'wallet.buy_in' },
+          },
+          client,
+        );
+      });
+    } catch (error) {
+      if (WalletService.isInsufficientFunds(error)) throw new InsufficientFundsError();
+      throw error;
+    }
+  }
+
+  /**
+   * Settles a match: pays winners from escrow, sweeps any remainder as rake.
+   *
+   * Idempotent by match id, so a retried settlement — after a crash, say — pays once.
+   * The escrow must end empty: that invariant is what reconciliation checks, and it is
+   * why the rake entry is computed as the remainder rather than passed in.
+   */
+  async settle(input: {
+    matchId: string;
+    payouts: SettlementInstruction[];
+    currency?: string;
+  }): Promise<{ transactionId: string; replayed: boolean; rake: number }> {
+    const currency = input.currency ?? TEST_CURRENCY;
+
+    const idempotencyKey = `settlement:${input.matchId}`;
+
+    return withTransaction(this.pool, async (client) => {
+      // The idempotency check must come BEFORE any business validation. A retried
+      // settlement — after a crash, a timeout, or an engine restart — finds the escrow
+      // already emptied by the first attempt, so validating first would reject the very
+      // replay that idempotency exists to make safe.
+      const replay = await client.query<{ id: string }>(
+        'SELECT id FROM wallet.ledger_transactions WHERE idempotency_key = $1',
+        [idempotencyKey],
+      );
+      if (replay.rows[0]) {
+        const original = replay.rows[0].id;
+        const rakeRows = await client.query<{ total: string }>(
+          `SELECT COALESCE(SUM(e.amount), 0)::text AS total
+             FROM wallet.ledger_entries e
+             JOIN wallet.accounts a ON a.id = e.account_id
+            WHERE e.tx_id = $1 AND a.type = 'rake'`,
+          [original],
+        );
+        return { transactionId: original, replayed: true, rake: Number(rakeRows.rows[0]?.total ?? 0) };
+      }
+
+      const escrow = await this.repository.ensureEscrowAccount(client, input.matchId, currency);
+
+      const { rows } = await client.query<{ amount: string }>(
+        'SELECT amount FROM wallet.balances WHERE account_id = $1 FOR UPDATE',
+        [escrow.id],
+      );
+      const escrowAmount = Number(rows[0]?.amount ?? 0);
+
+      const totalPayout = input.payouts.reduce((sum, payout) => sum + payout.amount, 0);
+      if (totalPayout > escrowAmount) {
+        throw new Error(
+          `settlement for match ${input.matchId} would pay ${totalPayout} from an escrow of ${escrowAmount}`,
+        );
+      }
+      const rake = escrowAmount - totalPayout;
+
+      const entries = [{ accountId: escrow.id, amount: -escrowAmount, currency }];
+      for (const payout of input.payouts) {
+        if (payout.amount <= 0) continue;
+        const account = await this.repository.ensureUserAccount(client, payout.userId, currency);
+        entries.push({ accountId: account.id, amount: payout.amount, currency });
+      }
+      if (rake > 0) {
+        const rakeAccount = await this.repository.ensureHouseAccount(client, 'rake', currency);
+        entries.push({ accountId: rakeAccount.id, amount: rake, currency });
+      }
+
+      const result = await this.ledger.post(
+        {
+          type: 'settlement',
+          idempotencyKey,
+          refType: 'match',
+          refId: input.matchId,
+          entries,
+          audit: { actorType: 'system', action: 'wallet.settlement' },
+        },
+        client,
+      );
+      return { ...result, rake };
+    });
+  }
+
+  /**
+   * Reverses a transaction by posting its mirror image (rule 5: corrections are never edits).
+   */
+  async reverse(input: {
+    transactionId: string;
+    reason: string;
+    actorId: string;
+    actorType?: 'admin' | 'system';
+  }): Promise<{ transactionId: string; replayed: boolean }> {
+    return withTransaction(this.pool, async (client) => {
+      const { rows } = await client.query<{ account_id: string; amount: string; currency: string }>(
+        'SELECT account_id, amount, currency FROM wallet.ledger_entries WHERE tx_id = $1',
+        [input.transactionId],
+      );
+      if (rows.length === 0) throw new Error(`transaction ${input.transactionId} not found`);
+
+      return this.ledger.post(
+        {
+          type: 'reversal',
+          idempotencyKey: `reversal:${input.transactionId}`,
+          reversesTxId: input.transactionId,
+          entries: rows.map((row) => ({
+            accountId: row.account_id,
+            amount: -Number(row.amount),
+            currency: row.currency,
+          })),
+          createdBy: input.actorId,
+          audit: {
+            actorType: input.actorType ?? 'admin',
+            actorId: input.actorId,
+            action: 'wallet.reversal',
+          },
+        },
+        client,
+      );
+    });
+  }
+
+  private static isInsufficientFunds(error: unknown): boolean {
+    return error instanceof Error && error.message.includes('insufficient funds');
+  }
+}

@@ -4,6 +4,7 @@ import 'package:casino_app/app/providers.dart';
 import 'package:casino_app/config/app_config.dart';
 import 'package:casino_app/features/auth/auth_controller.dart';
 import 'package:casino_app/features/auth/auth_state.dart';
+import 'package:casino_app/features/wallet/wallet_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,6 +19,9 @@ Widget appWith(List<Override> overrides, {AuthState auth = const AuthState.signe
         authControllerProvider.overrideWith((ref) => FakeAuthController(auth)),
         connectivityProvider.overrideWith((ref) => Stream.value(true)),
         serverReachabilityProvider.overrideWith((ref) async => HealthStatus.ok),
+        balanceProvider.overrideWith(
+          (ref) async => const Money(amount: 0, currency: Money.testCurrency),
+        ),
         ...overrides,
       ],
       child: const CasinoApp(),
