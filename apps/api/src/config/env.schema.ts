@@ -15,12 +15,13 @@ export const envSchema = z.object({
 
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
 
-  /**
-   * Wired in P1. Declared here so the local stack is discoverable and so a
-   * missing value in staging/prod is caught at boot rather than at first query.
-   */
-  DATABASE_URL: z.string().url().optional(),
-  REDIS_URL: z.string().url().optional(),
+  /** PostgreSQL — the sole source of truth (rule 2). Required everywhere since P1. */
+  DATABASE_URL: z.string().url(),
+  /** Redis — cache, queues, rate limiting. Never financial truth (rule 7). */
+  REDIS_URL: z.string().url(),
+
+  DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -39,11 +40,5 @@ export function validateEnv(raw: Record<string, unknown>): Env {
     throw new ConfigValidationError(`Invalid environment configuration — ${problems}`);
   }
 
-  const env = result.data;
-  if (env.APP_ENV !== 'dev' && (!env.DATABASE_URL || !env.REDIS_URL)) {
-    throw new ConfigValidationError(
-      `Invalid environment configuration — DATABASE_URL and REDIS_URL are required when APP_ENV is "${env.APP_ENV}"`,
-    );
-  }
-  return env;
+  return result.data;
 }

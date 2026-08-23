@@ -10,7 +10,9 @@ Real-time, real-money gaming platform: Flutter (Android, off-store APK) + NestJS
 pnpm bootstrap                # create local .env files from .example templates + install deps
 pnpm dev:services             # start local Postgres 16 + Redis 7
                               # or: docker compose -f infra/docker-compose.dev.yml up -d
+pnpm --filter @casino/api migrate   # apply database migrations
 pnpm verify                   # lint + typecheck + test + build
+pnpm --filter @casino/api test:int  # integration tests (real Postgres + Redis)
 pnpm --filter @casino/api start:dev
 curl localhost:3000/api/v1/health
 ```
@@ -35,7 +37,8 @@ docs/                     architecture, domains, security, compliance, phases
 |---|---|
 | `pnpm verify` | lint + typecheck + test + build (what CI runs) |
 | `pnpm test` | unit tests across workspaces |
-| `pnpm --filter @casino/api test:e2e` | API end-to-end tests |
+| `pnpm --filter @casino/api test:int` | integration tests against real PostgreSQL + Redis |
+| `pnpm --filter @casino/api migrate` | apply database migrations |
 | `pnpm dev:services` / `:stop` / `:status` | local Postgres + Redis |
 | `pnpm format` | Prettier write |
 

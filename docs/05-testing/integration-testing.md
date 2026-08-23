@@ -67,3 +67,25 @@ A game that passes gets platform trust; a game that needs suite changes triggers
 - Real HTTP webhook delivery with signatures (own test keypairs), configurable latency/retry/duplicate/out-of-order behavior, scriptable verdicts (approve/reject/review, deposit success/fail/chargeback), statement export for reconciliation tests.
 - They power local compose, CI integration suites, **and staging until P15** decides real providers — so every payment/KYC flow, screen, and state machine is exercised for real long before OQ-02/OQ-03 close.
 - When real adapters land (P16/P17), the same port-level test suites run against provider sandboxes; the fakes remain the fast deterministic lane and the behavioral spec of what the platform assumes about any provider.
+
+## Current mechanism (from P1)
+
+The rule this document exists to protect — **money and audit paths are tested against a
+real PostgreSQL, never a mock or a different engine** — is fully in force. The container
+*mechanism* differs from the Testcontainers design above:
+
+| Context | How PostgreSQL + Redis are provided |
+|---|---|
+| Developer machine | The local-first stack (`pnpm dev:services` or `infra/docker-compose.dev.yml`) |
+| CI | GitHub Actions **service containers** (`postgres:16-alpine`, `redis:7-alpine`) |
+
+Tests read `DATABASE_URL` / `REDIS_URL` and care about nothing else, so adopting
+Testcontainers later requires no test rewrites. The reason for the deviation is ADR-021:
+the development environment must run free on localhost, and Testcontainers requires a
+Docker daemon that is not always available. See `../phases/PHASE-01-backend-platform-core.md` §17.
+
+**Suite naming.** From P1 there is one API-level suite: `test:int` (boots the full Nest
+app against real datastores). The separate "e2e" API suite from P0 was folded into it —
+once the app required real datastores the two were the same thing under different names.
+End-to-end in this document's sense (device-level user journeys) begins with the Flutter
+client; see `e2e-testing.md`.

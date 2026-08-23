@@ -13,6 +13,34 @@ jobs:
   verify:
     name: Lint, typecheck, test, build
     runs-on: ubuntu-latest
+
+    # The local-first stack (ADR-021) as CI service containers: same engines, same ports,
+    # no cloud resources. Integration tests run against a real PostgreSQL and Redis —
+    # money and audit paths are never tested against a mock (testing-strategy.md).
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: casino_dev
+          POSTGRES_USER: casino_dev
+          POSTGRES_PASSWORD: casino_dev_local_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U casino_dev -d casino_dev"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://casino_dev:casino_dev_local_only@127.0.0.1:5432/casino_dev
+      REDIS_URL: redis://127.0.0.1:6379
+
     steps:
       - uses: actions/checkout@v4
 
@@ -40,8 +68,11 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: API e2e tests
-        run: pnpm --filter @casino/api test:e2e
+      - name: Database migrations
+        run: pnpm --filter @casino/api migrate
+
+      - name: Integration tests (real PostgreSQL + Redis)
+        run: pnpm --filter @casino/api test:int
 
   secret-scan:
     name: Secret scanning (rule 14)

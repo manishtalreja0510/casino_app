@@ -10,9 +10,9 @@ Update this file in the same PR as any status change. BLOCKED entries must name 
 | Phase | Name | Status | Blocker / notes |
 |---|---|---|---|
 | P0 | Foundations | COMPLETE | 2026-08-23 · `phases/PHASE-00-foundations.md` |
-| P1 | Backend platform core | NOT_STARTED | P0 complete — ready to plan |
-| P2 | Flutter platform core | NOT_STARTED | needs P0 |
-| P3 | Auth & identity | NOT_STARTED | needs P1, P2 |
+| P1 | Backend platform core | COMPLETE | 2026-08-23 · `phases/PHASE-01-backend-platform-core.md` |
+| P2 | Flutter platform core | NOT_STARTED | P0/P1 complete; Flutter SDK 3.x installed — ready to plan |
+| P3 | Auth & identity | NOT_STARTED | needs P2 |
 | P4 | Wallet & ledger (test currency) | NOT_STARTED | needs P3 |
 | P5 | Real-time core | NOT_STARTED | needs P3 |
 | P6 | Game engine & contract | NOT_STARTED | needs P4, P5 |
