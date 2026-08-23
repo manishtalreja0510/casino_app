@@ -175,14 +175,30 @@ export class MatchRepository {
     return rows[0] ? { seq: Number(rows[0].seq), state: rows[0].state } : null;
   }
 
-  /** Matches left mid-play by a crash — the recovery sweep's input. */
-  async findRecoverableMatches(limit = 100): Promise<string[]> {
+  /**
+   * Matches left mid-play by a crash — the recovery sweep's input.
+   *
+   * Paged by id rather than by a bare LIMIT: a resumed match stays `in_progress`, so a
+   * sweep that always read the first N would re-process the same ones forever and never
+   * reach the rest. The cursor walks the whole set exactly once.
+   */
+  async findRecoverableMatches(limit = 100, afterId?: string): Promise<string[]> {
     const { rows } = await this.pool.query<{ id: string }>(
-      `SELECT id FROM game.matches WHERE status IN ('starting','in_progress','settling')
-        ORDER BY created_at ASC LIMIT $1`,
-      [limit],
+      `SELECT id FROM game.matches
+        WHERE status IN ('starting','in_progress','settling')
+          AND ($2::uuid IS NULL OR id > $2)
+        ORDER BY id ASC LIMIT $1`,
+      [limit, afterId ?? null],
     );
     return rows.map((row) => row.id);
+  }
+
+  async countRecoverableMatches(): Promise<number> {
+    const { rows } = await this.pool.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM game.matches
+        WHERE status IN ('starting','in_progress','settling')`,
+    );
+    return Number(rows[0]?.count ?? 0);
   }
 
   private static toMatch(row: {

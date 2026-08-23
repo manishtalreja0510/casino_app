@@ -29,17 +29,76 @@ export class RecoveryService {
     private readonly matches: MatchRepository,
   ) {}
 
-  /** Sweeps every match left in a non-terminal state. Run at startup and on demand. */
-  async recoverAll(): Promise<RecoveryOutcome[]> {
-    const matchIds = await this.matches.findRecoverableMatches();
-    if (matchIds.length === 0) return [];
+  /** Page size and overall bound for one sweep. */
+  static readonly batchSize = 100;
+  static readonly maxPerSweep = 2_000;
 
-    this.logger.log(`recovering ${matchIds.length} in-flight match(es)`);
+  /**
+   * Sweeps every match left in a non-terminal state. Run at startup and on demand.
+   *
+   * Walks the whole set with a cursor rather than repeatedly reading the first page:
+   * a resumed match stays `in_progress`, so a LIMIT-only query would revisit the same
+   * matches and never reach the ones behind them. Bounded by `maxPerSweep` so a corrupt
+   * backlog cannot hold startup hostage — anything left is reported, not silently dropped.
+   */
+  async recoverAll(): Promise<RecoveryOutcome[]> {
+    const total = await this.matches.countRecoverableMatches();
+    if (total === 0) return [];
+
+    this.logger.log(`recovering ${total} in-flight match(es)`);
+
     const outcomes: RecoveryOutcome[] = [];
-    for (const matchId of matchIds) {
-      outcomes.push(await this.recover(matchId));
+    let cursor: string | undefined;
+
+    while (outcomes.length < RecoveryService.maxPerSweep) {
+      const batch = await this.matches.findRecoverableMatches(RecoveryService.batchSize, cursor);
+      if (batch.length === 0) break;
+
+      for (const matchId of batch) {
+        outcomes.push(await this.recover(matchId));
+      }
+      cursor = batch.at(-1);
     }
+
+    this.logSummary(outcomes, total);
     return outcomes;
+  }
+
+  /**
+   * Logs counts, not identifiers.
+   *
+   * An earlier version listed every match id on one line — unreadable at 100 matches and
+   * useless at 10,000. Only voided matches are named, because those are the ones a human
+   * has to look at: money moved and players lost a game.
+   */
+  private logSummary(outcomes: RecoveryOutcome[], total: number): void {
+    const counts = outcomes.reduce<Record<string, number>>((acc, outcome) => {
+      acc[outcome.action] = (acc[outcome.action] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    const summary = Object.entries(counts)
+      .map(([action, count]) => `${action}=${count}`)
+      .join(', ');
+    this.logger.log(`startup recovery complete: ${summary} (of ${total} in flight)`);
+
+    const voided = outcomes.filter((outcome) => outcome.action === 'voided');
+    if (voided.length > 0) {
+      // Voided matches refunded players and ended a game they were playing — worth naming,
+      // capped so a mass failure does not bury the rest of the log.
+      const named = voided.slice(0, 20).map((outcome) => `${outcome.matchId} (${outcome.reason})`);
+      this.logger.warn(
+        `voided ${voided.length} unrecoverable match(es): ${named.join('; ')}` +
+          (voided.length > named.length ? ` … and ${voided.length - named.length} more` : ''),
+      );
+    }
+
+    if (outcomes.length >= RecoveryService.maxPerSweep) {
+      this.logger.error(
+        `recovery stopped at the ${RecoveryService.maxPerSweep}-match cap; ` +
+          'in-flight matches remain unverified — investigate before serving traffic',
+      );
+    }
   }
 
   async recover(matchId: string): Promise<RecoveryOutcome> {

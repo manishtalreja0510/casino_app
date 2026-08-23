@@ -111,6 +111,13 @@ class HomeScreen extends ConsumerWidget {
                         },
                       ),
                     ),
+                    SizedBox(height: t.space.md),
+                    AppButton(
+                      label: 'Play',
+                      expand: true,
+                      icon: Icons.sports_esports,
+                      onPressed: () => context.push(AppRoutes.lobby),
+                    ),
                     const Spacer(),
                     if (!config.flavor.isProduction)
                       AppButton(

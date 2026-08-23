@@ -7,6 +7,7 @@ import '../features/auth/auth_screen.dart';
 import '../features/auth/auth_state.dart';
 import '../features/gallery/gallery_screen.dart';
 import '../features/home/home_screen.dart';
+import '../features/lobby/lobby_screen.dart';
 import '../features/wallet/wallet_screen.dart';
 
 /// Central route configuration — flow as configuration (ADR-002, `ui-flow-map.md`).
@@ -19,6 +20,7 @@ class AppRoutes {
   static const String home = '/';
   static const String signIn = '/sign-in';
   static const String starting = '/starting';
+  static const String lobby = '/play';
   static const String wallet = '/wallet';
   static const String gallery = '/_dev/gallery';
 }
@@ -59,6 +61,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.home,
         name: 'home',
         builder: (context, state) => const HomeScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.lobby,
+        name: 'lobby',
+        builder: (context, state) => const LobbyScreen(),
       ),
       GoRoute(
         path: AppRoutes.wallet,

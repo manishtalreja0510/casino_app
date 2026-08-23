@@ -15,6 +15,7 @@ import Redis from 'ioredis';
 
 import { ConfigService } from '@nestjs/config';
 import { AuthRepository } from '../auth/auth.repository';
+import { MatchmakingRepository } from '../matchmaking/matchmaking.repository';
 import { TicketService } from './ticket.service';
 import { SequencerService } from './sequencer.service';
 import { PresenceService } from './presence.service';
@@ -73,6 +74,7 @@ export class RealtimeGateway
     private readonly presence: PresenceService,
     private readonly realtime: RealtimeService,
     private readonly authRepository: AuthRepository,
+    private readonly rosters: MatchmakingRepository,
   ) {}
 
   async afterInit(namespace: Namespace): Promise<void> {
@@ -255,15 +257,31 @@ export class RealtimeGateway
     return { ok: true, replayed: events.length };
   }
 
-  /** Room-membership authorisation. Extended by the engine in P6 with match rosters. */
+  /**
+   * Room-membership authorisation.
+   *
+   * A match room is joinable only by its participants — checked against the roster in the
+   * database, never inferred from the client's request. Until P7 this was permissive
+   * because no real matches existed; with matchmaking seating strangers it is the control
+   * that stops one player watching another's game.
+   */
   private async canJoin(identity: SocketIdentity, room: string): Promise<boolean> {
     if (room === Rooms.user(identity.userId)) return true;
     if (room.startsWith('user:')) return false; // never another player's room
-    if (room.startsWith('match:')) return true; // engine narrows this to actual participants (P6)
+
+    if (room.startsWith('match:')) {
+      const matchId = room.slice('match:'.length);
+      return this.rosters.isParticipant(matchId, identity.userId);
+    }
+
+    // Lobby rooms are public to authenticated players: they carry queue depths and
+    // active-match counts, nothing player-specific.
+    if (room.startsWith('lobby:')) return true;
+
     return false;
   }
 
   private static isWellFormedRoom(room: string): boolean {
-    return /^(user|match):[A-Za-z0-9-]{1,64}$/.test(room);
+    return /^(user|match|lobby):[A-Za-z0-9:_-]{1,64}$/.test(room);
   }
 }

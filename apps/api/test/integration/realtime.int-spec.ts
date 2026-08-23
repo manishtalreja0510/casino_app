@@ -82,6 +82,25 @@ describe('realtime (integration)', () => {
 
   const settle = () => new Promise((resolve) => setTimeout(resolve, 250));
 
+  /**
+   * Creates a match with `userId` on the roster.
+   *
+   * Since P7 a match room may only be joined by its participants, so these tests need a
+   * real roster rather than an arbitrary id — which is the point of the check.
+   */
+  async function matchWithUser(): Promise<string> {
+    const matchId = uuidv7();
+    await pool.query(
+      `INSERT INTO game.matches (id, game_code, game_version, status) VALUES ($1, 'coin-duel', 1, 'in_progress')`,
+      [matchId],
+    );
+    await pool.query(
+      'INSERT INTO game.match_players (match_id, user_id, seat, stake) VALUES ($1, $2, 0, 0)',
+      [matchId, userId],
+    );
+    return matchId;
+  }
+
   beforeAll(async () => {
     pool = testPool();
     await ensureMigrated(pool);
@@ -140,7 +159,7 @@ describe('realtime (integration)', () => {
   describe('rooms and authorisation', () => {
     it('joins a match room and reports the current sequence', async () => {
       const socket = await connect(portA, await ticketFor(instanceA));
-      const matchId = uuidv7();
+      const matchId = await matchWithUser();
       const ack = await socket.emitWithAck(ClientEvent.JOIN, { room: Rooms.match(matchId) });
 
       expect(ack.ok).toBe(true);
@@ -154,6 +173,32 @@ describe('realtime (integration)', () => {
       const ack = await socket.emitWithAck(ClientEvent.JOIN, { room: Rooms.user(uuidv7()) });
 
       // The client asking is exactly the case the check exists for (rule 1).
+      expect(ack.ok).toBe(false);
+      expect(ack.error).toBe('forbidden');
+      socket.disconnect();
+    });
+
+    it('REFUSES a match room the player is not a participant of (P7)', async () => {
+      const socket = await connect(portA, await ticketFor(instanceA));
+
+      // A match that exists, with a roster this user is not on. Before P7 this was
+      // permitted — any authenticated player could watch any match.
+      const strangersMatch = uuidv7();
+      const stranger = uuidv7();
+      await pool.query(
+        `INSERT INTO auth.users (id, email, display_name) VALUES ($1, $2, 'Stranger')`,
+        [stranger, `stranger-${stranger}@example.test`],
+      );
+      await pool.query(
+        `INSERT INTO game.matches (id, game_code, game_version, status) VALUES ($1, 'coin-duel', 1, 'in_progress')`,
+        [strangersMatch],
+      );
+      await pool.query(
+        'INSERT INTO game.match_players (match_id, user_id, seat, stake) VALUES ($1, $2, 0, 0)',
+        [strangersMatch, stranger],
+      );
+
+      const ack = await socket.emitWithAck(ClientEvent.JOIN, { room: Rooms.match(strangersMatch) });
       expect(ack.ok).toBe(false);
       expect(ack.error).toBe('forbidden');
       socket.disconnect();
@@ -181,7 +226,7 @@ describe('realtime (integration)', () => {
       // disconnect itself is the assertion, not the ack.
       const disconnected = expectDisconnect(socket);
       const ack = await socket
-        .emitWithAck(ClientEvent.JOIN, { room: Rooms.match(uuidv7()) })
+        .emitWithAck(ClientEvent.JOIN, { room: Rooms.match(await matchWithUser()) })
         .catch(() => ({ ok: false }));
       expect(ack.ok).toBe(false);
       await expect(disconnected).resolves.toBeDefined();
@@ -191,7 +236,7 @@ describe('realtime (integration)', () => {
   describe('sequenced delivery', () => {
     it('delivers events in order with monotonic sequence numbers', async () => {
       const socket = await connect(portA, await ticketFor(instanceA));
-      const room = Rooms.match(uuidv7());
+      const room = Rooms.match(await matchWithUser());
       await socket.emitWithAck(ClientEvent.JOIN, { room });
       const collector = collectEvents(socket);
 
@@ -210,7 +255,7 @@ describe('realtime (integration)', () => {
 
     it('reaches a socket held by ANOTHER instance (redis adapter)', async () => {
       const socket = await connect(portB, await ticketFor(instanceB));
-      const room = Rooms.match(uuidv7());
+      const room = Rooms.match(await matchWithUser());
       await socket.emitWithAck(ClientEvent.JOIN, { room });
       const collector = collectEvents(socket);
 
@@ -225,7 +270,7 @@ describe('realtime (integration)', () => {
 
   describe('resume protocol', () => {
     it('replays exactly the missed events after a reconnect', async () => {
-      const room = Rooms.match(uuidv7());
+      const room = Rooms.match(await matchWithUser());
       const first = await connect(portA, await ticketFor(instanceA));
       await first.emitWithAck(ClientEvent.JOIN, { room });
       const before = collectEvents(first);
@@ -255,7 +300,7 @@ describe('realtime (integration)', () => {
     });
 
     it('RESUMES AGAINST A DIFFERENT INSTANCE than the one that sent the events', async () => {
-      const room = Rooms.match(uuidv7());
+      const room = Rooms.match(await matchWithUser());
       const onA = await connect(portA, await ticketFor(instanceA));
       await onA.emitWithAck(ClientEvent.JOIN, { room });
       const beforeDrop = collectEvents(onA);
@@ -281,7 +326,7 @@ describe('realtime (integration)', () => {
     });
 
     it('demands a full resync when the gap is larger than the buffer', async () => {
-      const room = Rooms.match(uuidv7());
+      const room = Rooms.match(await matchWithUser());
       const socket = await connect(portA, await ticketFor(instanceA));
 
       // Advance the room far beyond what the ring buffer retains.
@@ -298,7 +343,7 @@ describe('realtime (integration)', () => {
     });
 
     it('demands a resync when the client is AHEAD of the server (post-flush)', async () => {
-      const room = Rooms.match(uuidv7());
+      const room = Rooms.match(await matchWithUser());
       const socket = await connect(portA, await ticketFor(instanceA));
       await socket.emitWithAck(ClientEvent.JOIN, { room });
 
@@ -308,7 +353,7 @@ describe('realtime (integration)', () => {
     });
 
     it('replays nothing when the client is already current', async () => {
-      const room = Rooms.match(uuidv7());
+      const room = Rooms.match(await matchWithUser());
       const socket = await connect(portA, await ticketFor(instanceA));
       await socket.emitWithAck(ClientEvent.JOIN, { room });
       await instanceA.get(RealtimeService).broadcast(room, 'test:one', {});

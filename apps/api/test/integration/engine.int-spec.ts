@@ -288,6 +288,41 @@ describe('game engine (integration)', () => {
     });
   });
 
+  describe('free play (zero stake)', () => {
+    it('settles a free match, which moves no money at all', async () => {
+      // Found by startup recovery, not by a unit test: a zero-stake settlement would have
+      // posted a single zero entry, which the ledger refuses — so free-play matches could
+      // never finish. The lobby offers a free tier, so this is a real path.
+      const [a, b] = await Promise.all([makePlayer(0), makePlayer(0)]);
+      const { matchId } = await engine.createMatch({
+        gameCode: 'coin-duel',
+        players: [{ userId: a }, { userId: b }],
+        stake: 0,
+      });
+
+      await engine.submitAction(matchId, { type: 'pick', userId: a, payload: { choice: 'heads' } });
+      await engine.submitAction(matchId, { type: 'pick', userId: b, payload: { choice: 'tails' } });
+
+      expect((await matches.findMatch(matchId))?.status).toBe('settled');
+      expect((await wallet.getBalance(a)).amount).toBe(0);
+      expect((await wallet.getBalance(b)).amount).toBe(0);
+      expect((await reconciliation.run()).ok).toBe(true);
+    });
+
+    it('voids a free match without attempting a refund', async () => {
+      const [a, b] = await Promise.all([makePlayer(0), makePlayer(0)]);
+      const { matchId } = await engine.createMatch({
+        gameCode: 'coin-duel',
+        players: [{ userId: a }, { userId: b }],
+        stake: 0,
+      });
+
+      await engine.voidMatch(matchId, 'test void');
+      expect((await matches.findMatch(matchId))?.status).toBe('voided');
+      expect((await reconciliation.run()).ok).toBe(true);
+    });
+  });
+
   describe('per-game kill-switch (rule 16)', () => {
     it('REFUSES to create a match for a disabled game, before any money moves', async () => {
       const flags = app.get(FlagsService);

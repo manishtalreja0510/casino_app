@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'api_error.dart';
 import 'auth_models.dart';
 import 'health.dart';
+import 'lobby_models.dart';
 import 'money.dart';
 import 'wallet_models.dart';
 
@@ -97,6 +98,30 @@ class CasinoApiClient {
 
   // ---- wallet (P4) ----
 
+  // ---- lobby & matchmaking (P7) ----
+
+  Future<List<LobbyGame>> lobby() async {
+    final json = await _get('/lobby');
+    return (json['games'] as List<dynamic>)
+        .whereType<Map<String, dynamic>>()
+        .map(LobbyGame.fromJson)
+        .toList();
+  }
+
+  /// Joins a stake tier's queue. May return a match immediately if it completed a pairing.
+  Future<QueueStatus> joinQueue(String tierId) async {
+    final json = await _post('/lobby/queue', {'tierId': tierId});
+    return QueueStatus.fromJson(json);
+  }
+
+  Future<void> leaveQueue(String tierId) async => _delete('/lobby/queue?tierId=\$tierId');
+
+  /// Polls queue state. Also refreshes the server-side TTL, so a client that stops asking
+  /// is dropped from the queue rather than blocking the tier.
+  Future<QueueStatus> queueStatus(String tierId) async {
+    return QueueStatus.fromJson(await _get('/lobby/queue?tierId=\$tierId'));
+  }
+
   /// Obtains a single-use WebSocket ticket (P5). Each connection needs a fresh one.
   Future<String> realtimeTicket() async {
     final json = await _post('/realtime/ticket', const {});
@@ -135,6 +160,19 @@ class CasinoApiClient {
       response = await _http
           .post(uri, headers: await _headers(json: true), body: jsonEncode(body))
           .timeout(timeout);
+    } on TimeoutException {
+      throw const NetworkException('timeout');
+    } catch (error) {
+      throw NetworkException(error.runtimeType.toString());
+    }
+    return _parse(response);
+  }
+
+  Future<Map<String, dynamic>> _delete(String path) async {
+    final uri = Uri.parse('\$baseUrl\$path');
+    late final http.Response response;
+    try {
+      response = await _http.delete(uri, headers: await _headers()).timeout(timeout);
     } on TimeoutException {
       throw const NetworkException('timeout');
     } catch (error) {

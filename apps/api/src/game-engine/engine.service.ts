@@ -82,6 +82,11 @@ export class EngineService {
       );
     }
 
+    // The match record and EVERY player's buy-in commit together.
+    //
+    // Charging players one transaction at a time would leave the first player paid for a
+    // match that never started as soon as the second could not afford it — the worst
+    // failure matchmaking can produce, and invisible until someone checks their balance.
     const matchId = await withTransaction(this.pool, async (client) => {
       const id = await this.matches.createMatch(client, {
         gameCode: definition.meta.code,
@@ -95,14 +100,19 @@ export class EngineService {
           stake: input.stake,
         })),
       });
+
+      if (input.stake > 0) {
+        for (const player of input.players) {
+          // Throws on insufficient funds, rolling back the match and any earlier buy-in.
+          await this.wallet.buyIn(
+            { userId: player.userId, matchId: id, amount: input.stake },
+            client,
+          );
+        }
+      }
+
       return id;
     });
-
-    if (input.stake > 0) {
-      for (const player of input.players) {
-        await this.wallet.buyIn({ userId: player.userId, matchId, amount: input.stake });
-      }
-    }
 
     await this.start(matchId);
     return { matchId };

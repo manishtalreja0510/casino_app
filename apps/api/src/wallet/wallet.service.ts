@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { PG_POOL } from '../platform/database/database.module';
 import { withTransaction } from '../platform/database/transaction';
 import { FlagsService } from '../platform/flags/flags.service';
@@ -136,36 +136,50 @@ export class WalletService {
    * Overdraw is prevented by the database (`balances` CHECK via trigger), not by reading
    * the balance first — a read-then-write check is a race, and this is money.
    */
-  async buyIn(input: {
-    userId: string;
-    matchId: string;
-    amount: number;
-    currency?: string;
-  }): Promise<{ transactionId: string; replayed: boolean }> {
+  async buyIn(
+    input: {
+      userId: string;
+      matchId: string;
+      amount: number;
+      currency?: string;
+    },
+    /**
+     * Join an existing transaction instead of opening one.
+     *
+     * Matchmaking seats several players at once and must charge all of them or none: a
+     * partial formation would take one player's stake for a match that never started.
+     * Passing the caller's client is what makes that atomic.
+     */
+    existingClient?: PoolClient,
+  ): Promise<{ transactionId: string; replayed: boolean }> {
     const currency = input.currency ?? TEST_CURRENCY;
     if (!Number.isSafeInteger(input.amount) || input.amount <= 0) throw new CurrencyMismatchError();
 
-    try {
-      return await withTransaction(this.pool, async (client) => {
-        const userAccount = await this.repository.ensureUserAccount(client, input.userId, currency);
-        const escrow = await this.repository.ensureEscrowAccount(client, input.matchId, currency);
+    const work = async (client: PoolClient) => {
+      const userAccount = await this.repository.ensureUserAccount(client, input.userId, currency);
+      const escrow = await this.repository.ensureEscrowAccount(client, input.matchId, currency);
 
-        return this.ledger.post(
-          {
-            type: 'buy_in',
-            // Idempotent per player per match: a retried join cannot charge twice.
-            idempotencyKey: `buy_in:${input.matchId}:${input.userId}`,
-            refType: 'match',
-            refId: input.matchId,
-            entries: [
-              { accountId: userAccount.id, amount: -input.amount, currency },
-              { accountId: escrow.id, amount: input.amount, currency },
-            ],
-            audit: { actorType: 'user', actorId: input.userId, action: 'wallet.buy_in' },
-          },
-          client,
-        );
-      });
+      return this.ledger.post(
+        {
+          type: 'buy_in',
+          // Idempotent per player per match: a retried join cannot charge twice.
+          idempotencyKey: `buy_in:${input.matchId}:${input.userId}`,
+          refType: 'match',
+          refId: input.matchId,
+          entries: [
+            { accountId: userAccount.id, amount: -input.amount, currency },
+            { accountId: escrow.id, amount: input.amount, currency },
+          ],
+          audit: { actorType: 'user', actorId: input.userId, action: 'wallet.buy_in' },
+        },
+        client,
+      );
+    };
+
+    try {
+      // When joining a caller's transaction, errors propagate so the WHOLE formation
+      // rolls back — including buy-ins that already succeeded within it.
+      return existingClient ? await work(existingClient) : await withTransaction(this.pool, work);
     } catch (error) {
       if (WalletService.isInsufficientFunds(error)) throw new InsufficientFundsError();
       throw error;
@@ -183,7 +197,7 @@ export class WalletService {
     matchId: string;
     payouts: SettlementInstruction[];
     currency?: string;
-  }): Promise<{ transactionId: string; replayed: boolean; rake: number }> {
+  }): Promise<{ transactionId: string | null; replayed: boolean; rake: number }> {
     const currency = input.currency ?? TEST_CURRENCY;
 
     const idempotencyKey = `settlement:${input.matchId}`;
@@ -224,6 +238,14 @@ export class WalletService {
         );
       }
       const rake = escrowAmount - totalPayout;
+
+      // A free-play match moves no money: escrow is empty and every payout is zero.
+      // Posting it would mean a transaction with a single zero entry, which the ledger
+      // rightly refuses — so there is simply nothing to record. The match still settles;
+      // only the ledger stays silent, because nothing happened in it.
+      if (escrowAmount === 0 && totalPayout === 0) {
+        return { transactionId: null, replayed: false, rake: 0 };
+      }
 
       const entries = [{ accountId: escrow.id, amount: -escrowAmount, currency }];
       for (const payout of input.payouts) {
